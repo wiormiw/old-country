@@ -1,0 +1,66 @@
+# old-country on a server: PostgreSQL + the API, and optionally the Aspire dashboard for logs and traces.
+#
+#   cd backend/deploy
+#   cp .env.example .env            # then edit it: password, music folder
+#   docker compose up -d --build    # API on http://<server>:5000
+#   docker compose logs -f api
+#
+# With the dashboard:  set OTEL_EXPORTER_OTLP_ENDPOINT in .env, then
+#   docker compose --profile dashboard up -d
+#   docker compose logs dashboard | grep login    # the sign-in link (token) for http://<server>:18888
+
+name: old-country
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: oldcountry
+    volumes:
+      - pgdata:/var/lib/postgresql   # PostgreSQL 18 images keep their data under this folder
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d oldcountry"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # No published port: only the API reaches the database, over this compose network.
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        YTDLP_VERSION: ${YTDLP_VERSION:-2026.10.26}
+    image: old-country-api:local
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"   # your user, so downloads in the music folder are yours
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-5000}:8080"
+    environment:
+      ConnectionStrings__oldcountry: "Host=postgres;Database=oldcountry;Username=postgres;Password=${POSTGRES_PASSWORD}"
+      Database__MigrateOnStartup: "true"   # one server, so it's safe to migrate when it starts
+      Library__Roots__0: /music
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}   # empty: telemetry off
+      OTEL_SERVICE_NAME: old-country-api
+    volumes:
+      - ${MUSIC_DIR:?Set MUSIC_DIR in .env}:/music
+
+  # Aspire's dashboard on its own: the same logs, traces and metrics view as in development.
+  dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.6
+    profiles: [dashboard]
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-18888}:18888"   # the UI; sign in with the link from its logs
+    environment:
+      # Telemetry arrives on port 18889, which isn't published: only containers on this network can send.
+      DASHBOARD__OTLP__AUTHMODE: Unsecured
+
+volumes:
+  pgdata:

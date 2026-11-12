@@ -1,0 +1,10 @@
+# Optional: YouTube Music cookies, for importing private playlists and your liked songs.
+# Export cookies.txt from a browser signed in to music.youtube.com, put it next to this file, then:
+#   cp compose.override.example.yaml compose.override.yaml   # compose loads it automatically
+#   docker compose up -d
+services:
+  api:
+    environment:
+      YouTubeMusic__CookiesFile: /config/cookies.txt
+    volumes:
+      - ./cookies.txt:/config/cookies.txt:ro

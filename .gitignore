@@ -7,6 +7,11 @@ TestResults/
 .vs/
 .idea/
 
+# Server deployment secrets (see backend/deploy)
+backend/deploy/.env
+backend/deploy/cookies.txt
+backend/deploy/compose.override.yaml
+
 # Rust / Tauri (desktop, later)
 target/
 dist/

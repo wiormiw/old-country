@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+**/TestResults/
+tests/
+deploy/.env
+deploy/*.txt
+.git

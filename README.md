@@ -56,6 +56,16 @@ dotnet user-secrets set MusicFolder /path/to/music --project src/OldCountry.AppH
 dotnet user-secrets list --project src/OldCountry.AppHost   # shows both
 ```
 
+**Just the API, without Aspire** (after running the AppHost once, so the database and secrets exist):
+
+```bash
+cd backend
+./run-api.sh    # same database and music folder as the AppHost; logs in the terminal; Ctrl+C to stop
+```
+
+It starts the AppHost's Postgres container, reads the password and music folder from the AppHost's
+user secrets, and runs the API on `http://localhost:5000`. There's no dashboard in this mode.
+
 Migrations run on startup in Development. The API's OpenAPI document is at `/openapi/v1.json` and an interactive UI at `/scalar`. `src/OldCountry.Api/OldCountry.Api.http` has a ready-made request for every endpoint.
 
 **Configuration** (appsettings, environment variables like `Library__Roots__0`, or user secrets):
@@ -74,6 +84,32 @@ Migrations run on startup in Development. The API's OpenAPI document is at `/ope
 | `YouTubeMusic:StreamCacheMaxMegabytes` | `2048` | Least recently played files are evicted first |
 
 Bad configuration stops the server at startup with a message naming the setting.
+
+## Deploying to a server
+
+Aspire's AppHost is a development tool: it starts Postgres and the API on your machine and shows
+the dashboard. On a server, `backend/deploy/` runs the same pieces with Docker Compose. That means
+PostgreSQL 18, the API image (with yt-dlp, Deno and ffmpeg built in), and optionally Aspire's
+dashboard on its own.
+
+```bash
+# On the server (Docker with the compose plugin installed)
+git clone <this repo> && cd old-country/backend/deploy
+cp .env.example .env && nano .env      # password, MUSIC_DIR, PUID/PGID (run `id`)
+docker compose up -d --build           # API on http://<server>:5000
+docker compose logs -f api
+```
+
+| Task | Command (in `backend/deploy`) |
+|---|---|
+| Update after `git pull` | `docker compose up -d --build` (migrations run on start) |
+| Update yt-dlp | bump `YTDLP_VERSION` in `.env`, then `docker compose up -d --build` |
+| Logs and traces | set `OTEL_EXPORTER_OTLP_ENDPOINT=http://dashboard:18889` in `.env`, run `docker compose --profile dashboard up -d`, then open `http://<server>:18888` with the link from `docker compose logs dashboard` |
+| Liked songs, private playlists | put `cookies.txt` here, `cp compose.override.example.yaml compose.override.yaml`, `docker compose up -d` |
+| Back up the database | `docker compose exec postgres pg_dump -U postgres oldcountry > backup.sql` |
+
+The database has no published port, so only the API can reach it. The API itself has no
+authentication: keep it on your LAN or behind a VPN, not open to the internet.
 
 ## Running the desktop app
 
