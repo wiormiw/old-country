@@ -10,6 +10,7 @@ using OldCountry.Api.Features.Tracks.GetTrack;
 using OldCountry.Api.Features.YouTubeMusic.DownloadTracks;
 using OldCountry.Api.Features.YouTubeMusic.ImportPlaylist;
 using OldCountry.Api.Features.YouTubeMusic.SearchYouTubeMusic;
+using OldCountry.Api.Features.YouTubeMusic.SyncPlaylists;
 using OldCountry.Domain.Library;
 
 namespace OldCountry.Api.Tests.Integration;
@@ -106,6 +107,65 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
         sync.Name.ShouldBe("Renamed long ago");
         (await Import(client, "PLadopt")).PlaylistId.ShouldBe(earlier.Id, "linked from now on");
     }
+
+    [Fact]
+    public async Task The_sync_button_adds_songs_new_on_youtube_and_records_when()
+    {
+        using var client = factory.CreateApiClient();
+        var youTube = (FakeYtDlp)factory.Services.GetRequiredService<IYtDlp>();
+        YtVideo a = new(new("syncNowSng1"), "Sync A", "Band", TimeSpan.FromSeconds(2), null),
+            b = new(new("syncNowSng2"), "Sync B", "Band", TimeSpan.FromSeconds(2), null);
+        youTube.Playlists["PLsyncNow"] = new YtPlaylist("Sync Now", [a]);
+        var imported = await Import(client, "PLsyncNow");
+
+        youTube.Playlists["PLsyncNow"] = new YtPlaylist("Sync Now", [a, b]);
+        var response = await client.PostAsync($"/api/youtube-music/playlists/{imported.PlaylistId}/sync", null, Ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await response.Content.ReadFromJsonAsync<ImportPlaylistReport>(Json, Ct))!.Added.ShouldBe(1);
+        var playlist = (await client.GetFromJsonAsync<PlaylistResponse>($"/api/playlists/{imported.PlaylistId}", Json, Ct)).ShouldNotBeNull();
+        playlist.YouTubeListId.ShouldBe("PLsyncNow");
+        playlist.YouTubeSyncedAt.ShouldNotBeNull();
+        playlist.Entries.Select(e => e.Title).ShouldBe(["Sync A", "Sync B"]);
+    }
+
+    [Fact]
+    public async Task Syncing_a_playlist_that_is_not_from_youtube_or_does_not_exist_says_why()
+    {
+        using var client = factory.CreateApiClient();
+        var created = await client.PostAsJsonAsync("/api/playlists", new { name = "Made here" }, Ct);
+        var mine = (await created.Content.ReadFromJsonAsync<PlaylistSummaryResponse>(Json, Ct)).ShouldNotBeNull();
+        mine.YouTubeListId.ShouldBeNull();
+
+        (await client.PostAsync($"/api/youtube-music/playlists/{mine.Id}/sync", null, Ct)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await client.PostAsync($"/api/youtube-music/playlists/{Guid.CreateVersion7()}/sync", null, Ct)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task The_scheduler_syncs_playlists_whose_last_sync_is_old_and_leaves_recent_ones()
+    {
+        using var client = factory.CreateApiClient();
+        var youTube = (FakeYtDlp)factory.Services.GetRequiredService<IYtDlp>();
+        var scheduler = factory.Services.GetRequiredService<PlaylistSyncScheduler>();
+        YtVideo a = new(new("autoSong001"), "Auto A", "Band", TimeSpan.FromSeconds(2), null),
+            b = new(new("autoSong002"), "Auto B", "Band", TimeSpan.FromSeconds(2), null),
+            c = new(new("autoSong003"), "Auto C", "Band", TimeSpan.FromSeconds(2), null);
+        youTube.Playlists["PLautoSync"] = new YtPlaylist("Auto Sync", [a]);
+        var imported = await Import(client, "PLautoSync");
+
+        // A song is added on YouTube; a round that treats every sync as old picks it up.
+        youTube.Playlists["PLautoSync"] = new YtPlaylist("Auto Sync", [a, b]);
+        (await scheduler.SyncDueAsync(TimeSpan.Zero, Ct)).ShouldBeGreaterThan(0);
+        (await Titles(client, imported.PlaylistId)).ShouldBe(["Auto A", "Auto B"]);
+
+        // Just synced, so a round with a one-hour interval leaves it alone.
+        youTube.Playlists["PLautoSync"] = new YtPlaylist("Auto Sync", [a, b, c]);
+        await scheduler.SyncDueAsync(TimeSpan.FromHours(1), Ct);
+        (await Titles(client, imported.PlaylistId)).ShouldBe(["Auto A", "Auto B"]);
+    }
+
+    private static async Task<string[]> Titles(HttpClient client, Guid playlistId) =>
+        [.. (await client.GetFromJsonAsync<PlaylistResponse>($"/api/playlists/{playlistId}", Json, Ct))!.Entries.Select(e => e.Title)];
 
     [Fact]
     public async Task A_url_and_the_bare_list_id_are_the_same_playlist()

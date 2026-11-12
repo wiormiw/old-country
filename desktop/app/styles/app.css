@@ -597,3 +597,10 @@ button[aria-busy="true"]::before {
 .downloading { animation: breathe 1.6s ease-in-out infinite; }
 @keyframes breathe { 50% { opacity: 0.45; } }
 @media (prefers-reduced-motion: reduce) { .downloading { animation: none !important; } }
+
+/* ---------- YouTube sync ---------- */
+
+.badge-youtube { background: rgb(201 162 39 / 0.18); color: var(--accent-strong); }
+.cards .badge-youtube { margin-left: 8px; }
+.sync-line { color: var(--muted); font-size: 13px; }
+.sync-line .badge { margin-right: 2px; }

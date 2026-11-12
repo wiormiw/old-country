@@ -33,13 +33,17 @@ internal sealed class PlaylistDetailsRequestValidator : AbstractValidator<Playli
 /// <param name="TrackCount">Number of entries, duplicates included.</param>
 /// <param name="CreatedAt">When the playlist was created.</param>
 /// <param name="UpdatedAt">When it last changed, if ever.</param>
+/// <param name="YouTubeListId">The YouTube Music playlist it was imported from and syncs with, if any.</param>
+/// <param name="YouTubeSyncedAt">When it last synced with that playlist.</param>
 public sealed record PlaylistSummaryResponse(
     Guid Id,
     string Name,
     string? Description,
     int TrackCount,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    string? YouTubeListId,
+    DateTimeOffset? YouTubeSyncedAt);
 
 /// <summary>One slot of a playlist, with the track it plays.</summary>
 /// <param name="Position">Zero-based index; use it to remove or move this entry.</param>
@@ -70,6 +74,8 @@ public sealed record PlaylistEntryResponse(
 /// <param name="TotalDuration">Sum of the entries' durations.</param>
 /// <param name="CreatedAt">When the playlist was created.</param>
 /// <param name="UpdatedAt">When it last changed, if ever.</param>
+/// <param name="YouTubeListId">The YouTube Music playlist it was imported from and syncs with, if any.</param>
+/// <param name="YouTubeSyncedAt">When it last synced with that playlist.</param>
 public sealed record PlaylistResponse(
     Guid Id,
     string Name,
@@ -77,10 +83,13 @@ public sealed record PlaylistResponse(
     IReadOnlyList<PlaylistEntryResponse> Entries,
     TimeSpan TotalDuration,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    string? YouTubeListId,
+    DateTimeOffset? YouTubeSyncedAt);
 
 internal static class PlaylistMapping
 {
     public static PlaylistSummaryResponse ToSummary(this Playlist playlist) => new(
-        playlist.Id.Value, playlist.Name, playlist.Description, playlist.Entries.Count, playlist.CreatedAt, playlist.UpdatedAt);
+        playlist.Id.Value, playlist.Name, playlist.Description, playlist.Entries.Count, playlist.CreatedAt, playlist.UpdatedAt,
+        playlist.YouTubeListId, playlist.YouTubeSyncedAt);
 }

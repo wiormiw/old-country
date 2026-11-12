@@ -169,6 +169,10 @@ pub async fn download_playlist(id: String, retry_skipped: bool) -> Result<Playli
     call("download_playlist", args!(id: String = id, retry_skipped: bool = retry_skipped)).await
 }
 
+pub async fn sync_playlist(id: String) -> Result<ImportReport, AppError> {
+    call("sync_playlist", args!(id: String = id)).await
+}
+
 pub async fn youtube_import(playlist: String) -> Result<ImportReport, AppError> {
     call("youtube_import", args!(playlist: String = playlist)).await
 }

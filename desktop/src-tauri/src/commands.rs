@@ -173,6 +173,11 @@ pub async fn download_playlist(state: State<'_, AppState>, id: String, retry_ski
 }
 
 #[tauri::command]
+pub async fn sync_playlist(state: State<'_, AppState>, id: String) -> Reply<ImportReport> {
+    state.api.sync_playlist(&id).await
+}
+
+#[tauri::command]
 pub async fn youtube_import(state: State<'_, AppState>, playlist: String) -> Reply<ImportReport> {
     state.api.youtube_import(&playlist).await
 }

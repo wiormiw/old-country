@@ -86,6 +86,7 @@ Migrations run on startup in Development. The API's OpenAPI document is at `/ope
 | `YouTubeMusic:StreamCacheFolder` | system temp | Cache for YouTube audio being played |
 | `YouTubeMusic:StreamCacheMaxMegabytes` | `2048` | Least recently played files are evicted first |
 | `YouTubeMusic:DownloadPause` | `00:00:05` | Wait between one download and the next |
+| `YouTubeMusic:PlaylistSyncInterval` | `06:00:00` | How often imported playlists sync with YouTube Music on their own; `00:00:00` turns it off |
 | `YouTubeMusic:RateLimitPause` | `00:15:00` | How long downloads rest when YouTube rate limits; doubles if it happens again in a row (up to 8x) |
 
 Bad configuration stops the server at startup with a message naming the setting.
@@ -195,7 +196,7 @@ tail -f ~/.local/share/dev.wiormiw.oldcountry/logs/old-country.log
 | Tracks | `POST /api/tracks`, `GET /api/tracks`, `GET /api/tracks/{id}`, `GET /api/tracks/{id}/audio` |
 | Library scans | `POST /api/tracks/scans`, `GET /api/tracks/scans/latest` |
 | Playlists | `POST/GET /api/playlists`, `GET/PUT/DELETE /api/playlists/{id}`, `POST /api/playlists/{id}/tracks`, `DELETE /api/playlists/{id}/tracks/{position}`, `POST /api/playlists/{id}/tracks/move` |
-| YouTube Music | `GET /api/youtube-music/search`, `GET /api/youtube-music/videos/{videoId}/audio`, `POST/GET /api/youtube-music/downloads`, `POST /api/youtube-music/playlists/{id}/downloads`, `POST /api/youtube-music/imports` |
+| YouTube Music | `GET /api/youtube-music/search`, `GET /api/youtube-music/videos/{videoId}/audio`, `POST/GET /api/youtube-music/downloads`, `POST /api/youtube-music/playlists/{id}/downloads`, `POST /api/youtube-music/playlists/{id}/sync`, `POST /api/youtube-music/imports` |
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details with a stable `code` field (`track.not_found`, `validation`, `youtube.failed`, ...).
 

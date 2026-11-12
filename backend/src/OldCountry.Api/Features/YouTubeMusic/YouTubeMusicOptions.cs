@@ -51,6 +51,13 @@ public sealed class YouTubeMusicOptions
     public TimeSpan RateLimitPause { get; init; } = TimeSpan.FromMinutes(15);
 
     /// <summary>
+    /// How often playlists imported from YouTube Music are synced with YouTube on their own, so songs
+    /// added there show up here. A playlist is synced when its last sync is older than this.
+    /// <c>00:00:00</c> turns automatic sync off (the Sync button still works).
+    /// </summary>
+    public TimeSpan PlaylistSyncInterval { get; init; } = TimeSpan.FromHours(6);
+
+    /// <summary>
     /// How long a worker owns a download it started. Long enough for the slowest download (two
     /// yt-dlp runs plus saving); if the server dies mid-download, the job runs again after this.
     /// </summary>
@@ -104,6 +111,9 @@ internal sealed class YouTubeMusicOptionsValidator : AbstractValidator<YouTubeMu
         RuleFor(o => o.DownloadPause)
             .InclusiveBetween(TimeSpan.Zero, TimeSpan.FromMinutes(10))
             .WithMessage("DownloadPause must be between 0 and 10 minutes.");
+        RuleFor(o => o.PlaylistSyncInterval)
+            .Must(t => t == TimeSpan.Zero || (t >= TimeSpan.FromMinutes(10) && t <= TimeSpan.FromDays(7)))
+            .WithMessage("PlaylistSyncInterval must be 00:00:00 (off) or between 10 minutes and 7 days.");
         RuleFor(o => o.RateLimitPause)
             .InclusiveBetween(TimeSpan.FromSeconds(1), TimeSpan.FromHours(6))
             .WithMessage("RateLimitPause must be between 1 second and 6 hours.");

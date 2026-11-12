@@ -122,6 +122,11 @@ impl ApiClient {
             .await
     }
 
+    /// Syncs an imported playlist with YouTube Music now.
+    pub async fn sync_playlist(&self, id: &str) -> Result<ImportReport, AppError> {
+        self.send(Method::POST, &format!("/api/youtube-music/playlists/{id}/sync"), None::<()>).await
+    }
+
     pub async fn youtube_import(&self, playlist: &str) -> Result<ImportReport, AppError> {
         self.send(Method::POST, "/api/youtube-music/imports", Some(json!({ "playlist": playlist }))).await
     }

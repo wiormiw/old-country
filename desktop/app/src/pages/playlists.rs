@@ -8,7 +8,7 @@ use shared::{AppError, Playlist, PlaylistDownloadReport, PlaylistEntry};
 
 use crate::components::{ErrorView, Loading};
 use crate::ipc;
-use crate::state::{entry_item, is_lasting_problem, problem_label, use_notice};
+use crate::state::{entry_item, import_message, is_lasting_problem, problem_label, time_ago, use_notice};
 
 #[component]
 pub fn Playlists() -> impl IntoView {
@@ -53,7 +53,10 @@ pub fn Playlists() -> impl IntoView {
                             <li>
                                 <A href=format!("/playlists/{}", p.id)>
                                     <span class="card-title">{p.name.clone()}</span>
-                                    <span class="muted">{format!("{} tracks", p.track_count)}</span>
+                                    <span class="muted">
+                                        {format!("{} tracks", p.track_count)}
+                                        {p.you_tube_list_id.is_some().then(|| view! { <span class="badge badge-youtube">"YouTube"</span> })}
+                                    </span>
                                     {p.description.clone().map(|d| view! { <span class="card-desc">{d}</span> })}
                                 </A>
                             </li>
@@ -118,6 +121,20 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
     let downloaded = Memo::new(move |_| distinct_songs(&entries.get(), |e| e.is_available_offline));
     let songs = Memo::new(move |_| distinct_songs(&entries.get(), |_| true));
     let queueing = RwSignal::new(false);
+    let syncing = RwSignal::new(false);
+    let sync_now = move || {
+        syncing.set(true);
+        leptos::task::spawn_local(async move {
+            match ipc::sync_playlist(id.get_value()).await {
+                Ok(report) => {
+                    notice.info(import_message(&report));
+                    reload();
+                }
+                Err(e) => notice.error(e.message),
+            }
+            syncing.set(false);
+        });
+    };
     let watching = RwSignal::new(false);
     let only_missing = RwSignal::new(false);
 
@@ -270,6 +287,15 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
                     })}
                 </p>
                 {playlist.description.clone().map(|d| view! { <p>{d}</p> })}
+                {playlist.you_tube_list_id.is_some().then(|| view! {
+                    <p class="sync-line">
+                        <span class="badge badge-youtube">"YouTube Music"</span>
+                        {match playlist.you_tube_synced_at.as_deref() {
+                            Some(at) => format!(" Synced {}. New songs on YouTube are added on their own.", time_ago(at)),
+                            None => " Not synced yet. New songs on YouTube are added on their own.".to_owned(),
+                        }}
+                    </p>
+                })}
             </div>
             <div class="actions">
                 <button class="primary" prop:disabled=move || empty.get()
@@ -288,6 +314,11 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
                     <button class="ghost" prop:disabled=move || queueing.get()
                         title="Try again the songs YouTube refused before (Premium only, private...), e.g. after getting Premium"
                         on:click=move |_| download_all(true)>{format!("↻ Retry skipped ({})", skipped.get())}</button>
+                })}
+                {playlist.you_tube_list_id.is_some().then(|| view! {
+                    <button class="ghost" aria-busy=move || syncing.get().to_string() prop:disabled=move || syncing.get()
+                        title="Add the songs that were added to this playlist on YouTube Music"
+                        on:click=move |_| sync_now()>"↻ Sync"</button>
                 })}
                 <button class="ghost" class:active=move || editing.get() on:click=move |_| editing.update(|e| *e = !*e)>"Edit"</button>
                 {move || if confirm_delete.get() {

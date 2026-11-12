@@ -60,6 +60,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         // Downloads back to back, and a one-second rest when "rate limited", so tests stay fast.
         builder.UseSetting("YouTubeMusic:DownloadPause", "00:00:00");
         builder.UseSetting("YouTubeMusic:RateLimitPause", "00:00:01");
+        builder.UseSetting("YouTubeMusic:PlaylistSyncInterval", "00:00:00");   // tests run sync rounds themselves
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IYtDlp>();

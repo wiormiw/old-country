@@ -4,6 +4,7 @@ using OldCountry.Api.Features.YouTubeMusic.DownloadTracks;
 using OldCountry.Api.Features.YouTubeMusic.ImportPlaylist;
 using OldCountry.Api.Features.YouTubeMusic.SearchYouTubeMusic;
 using OldCountry.Api.Features.YouTubeMusic.StreamYouTubeAudio;
+using OldCountry.Api.Features.YouTubeMusic.SyncPlaylists;
 
 namespace OldCountry.Api.Features.YouTubeMusic;
 
@@ -27,6 +28,10 @@ internal static class YouTubeMusicFeature
         services.AddSingleton<DownloadPauses>();
         services.AddHostedService<DownloadWorker>();
 
+        // Playlists imported from YouTube Music sync with it on their own.
+        services.AddSingleton<PlaylistSyncScheduler>();
+        services.AddHostedService(provider => provider.GetRequiredService<PlaylistSyncScheduler>());
+
         services.AddValidator<SearchYouTubeMusicRequest, SearchYouTubeMusicRequestValidator>();
         services.AddValidator<DownloadTracksRequest, DownloadTracksRequestValidator>();
         services.AddValidator<ImportPlaylistRequest, ImportPlaylistRequestValidator>();
@@ -36,6 +41,7 @@ internal static class YouTubeMusicFeature
         services.AddCommand<QueueDownloadsCommand, QueueDownloadsResult, QueueDownloadsHandler>();
         services.AddCommand<QueuePlaylistDownloadsCommand, QueuePlaylistDownloadsResult, QueuePlaylistDownloadsHandler>();
         services.AddQuery<ListDownloadsQuery, DownloadsResponse, ListDownloadsHandler>();
+        services.AddCommand<SyncPlaylistCommand, SyncPlaylistResult, SyncPlaylistHandler>();
         services.AddCommand<ImportPlaylistCommand, ImportPlaylistResult, ImportPlaylistHandler>();
     }
 
@@ -46,5 +52,6 @@ internal static class YouTubeMusicFeature
         StreamYouTubeAudioEndpoint.Map(youTube);
         DownloadTracksEndpoints.Map(youTube);
         ImportPlaylistEndpoint.Map(youTube);
+        SyncPlaylistEndpoint.Map(youTube);
     }
 }

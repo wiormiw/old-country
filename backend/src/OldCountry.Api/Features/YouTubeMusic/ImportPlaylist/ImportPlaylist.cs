@@ -29,6 +29,9 @@ internal static partial class PlaylistSource
 
     public static bool IsLiked(string input) => string.Equals(input.Trim(), Liked, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Whether a stored list id is your liked songs, which need cookies.</summary>
+    public static bool IsLikedList(string listId) => listId == LikedListId;
+
     public static Uri? ToUrl(string input)
     {
         input = input.Trim();
@@ -44,6 +47,9 @@ internal static partial class PlaylistSource
     /// <summary>The list id of a URL made by <see cref="ToUrl"/>: what links a library playlist to its source.</summary>
     public static string ListIdOf(Uri url) =>
         System.Web.HttpUtility.ParseQueryString(url.Query)["list"] ?? throw new ArgumentException("Not a playlist URL.", nameof(url));
+
+    /// <summary>The URL for a list id stored on a playlist, for syncing it again.</summary>
+    public static Uri FromListId(string listId) => Build(listId);
 
     private static Uri Build(string listId) => new($"https://music.youtube.com/playlist?list={listId}");
 
@@ -166,6 +172,7 @@ internal sealed partial class ImportPlaylistHandler(
         var playlist = (Playlist)Playlist.Create(Clip(source.Title, Playlist.NameMaxLength), $"Imported from YouTube Music: {url}").Value!;
         playlist.LinkToYouTube(listId);
         playlist.AppendFromYouTube(resolved.Songs, clock.GetUtcNow());
+        playlist.MarkSyncedFromYouTube(clock.GetUtcNow());
         db.Playlists.Add(playlist);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -189,6 +196,7 @@ internal sealed partial class ImportPlaylistHandler(
 
         var resolved = await ResolveAsync(toAdd, Playlist.MaxEntries - playlist.Entries.Count, cancellationToken);
         playlist.AppendFromYouTube(resolved.Songs, clock.GetUtcNow());
+        playlist.MarkSyncedFromYouTube(clock.GetUtcNow());
         await db.SaveChangesAsync(cancellationToken);
 
         Log.Synced(logger, playlist.Id.Value, resolved.Songs.Count, resolved.Created, resolved.Skipped);

@@ -102,6 +102,12 @@ pub struct PlaylistSummary {
     pub created_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+    /// The YouTube Music playlist it was imported from and syncs with, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub you_tube_list_id: Option<String>,
+    /// When it last synced with that playlist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub you_tube_synced_at: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -136,6 +142,12 @@ pub struct Playlist {
     pub created_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+    /// The YouTube Music playlist it was imported from and syncs with, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub you_tube_list_id: Option<String>,
+    /// When it last synced with that playlist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub you_tube_synced_at: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

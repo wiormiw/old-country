@@ -34,6 +34,9 @@ public sealed class Playlist : AuditableEntity<PlaylistId>
     /// </summary>
     public string? YouTubeListId { get; private set; }
 
+    /// <summary>When this playlist last took the songs of its YouTube playlist (import or sync).</summary>
+    public DateTimeOffset? YouTubeSyncedAt { get; private set; }
+
     /// <summary>
     /// Every video this playlist has taken from its YouTube playlist. A sync adds only videos not
     /// in here, so a song removed from this playlist stays removed even while it's still on YouTube.
@@ -101,6 +104,9 @@ public sealed class Playlist : AuditableEntity<PlaylistId>
         var taken = _youTubeVideosTaken.ToHashSet(StringComparer.Ordinal);
         return [.. source.Distinct().Where(video => !taken.Contains(video.Value) && !present.Contains(video))];
     }
+
+    /// <summary>Notes that the playlist was just compared with its YouTube playlist.</summary>
+    public void MarkSyncedFromYouTube(DateTimeOffset at) => YouTubeSyncedAt = at;
 
     /// <summary>Records videos as taken from YouTube without adding them (they're already here).</summary>
     public void MarkTakenFromYouTube(IEnumerable<YouTubeVideoId> videos)

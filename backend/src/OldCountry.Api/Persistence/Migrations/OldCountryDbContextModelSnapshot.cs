@@ -17,7 +17,7 @@ partial class OldCountryDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261112203304_PersistentDownloadQueue";
+    public override string LastMigrationId => "20261112215643_PlaylistSyncTime";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -159,6 +159,10 @@ partial class OldCountryDbContextModelSnapshot : ModelSnapshot
                     .HasMaxLength(80)
                     .HasColumnType("character varying(80)")
                     .HasColumnName("you_tube_list_id");
+
+                b.Property<DateTimeOffset?>("YouTubeSyncedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("you_tube_synced_at");
 
                 b.PrimitiveCollection<List<string>>("_youTubeVideosTaken")
                     .IsRequired()

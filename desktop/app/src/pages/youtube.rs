@@ -5,7 +5,7 @@ use shared::{AppError, YouTubeResult};
 
 use crate::components::{ErrorView, Loading};
 use crate::ipc;
-use crate::state::{use_notice, youtube_item};
+use crate::state::{import_message, use_notice, youtube_item};
 
 const RESULTS: u32 = 25;
 
@@ -145,20 +145,7 @@ fn ImportForm() -> impl IntoView {
                 Ok(report) => {
                     error.set(None);
                     playlist.set(String::new());
-                    let skipped = if report.skipped > 0 { format!(", {} skipped", report.skipped) } else { String::new() };
-                    notice.info(match (report.is_new, report.added) {
-                        (Some(false), Some(0)) => format!("\"{}\" is already up to date with YouTube.", report.name),
-                        (Some(false), Some(added)) => format!(
-                            "Updated \"{}\" from YouTube: {added} new song{} added ({} in total){skipped}.",
-                            report.name,
-                            if added == 1 { "" } else { "s" },
-                            report.entries,
-                        ),
-                        _ => format!(
-                            "Imported \"{}\": {} songs, {} new to the library{skipped}.",
-                            report.name, report.entries, report.tracks_created,
-                        ),
-                    });
+                    notice.info(import_message(&report));
                 }
                 Err(e) => error.set(Some(e)),
             }

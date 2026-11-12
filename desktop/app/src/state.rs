@@ -1,7 +1,7 @@
 //! App-wide reactive state, provided through Leptos context.
 
 use leptos::prelude::*;
-use shared::{AudioRef, PlayerState, PlaylistEntry, QueueItem, Track, YouTubeResult};
+use shared::{AudioRef, ImportReport, PlayerState, PlaylistEntry, QueueItem, Track, YouTubeResult};
 
 use crate::ipc;
 
@@ -119,4 +119,42 @@ pub fn error_code_label(code: &str) -> Option<&'static str> {
         "download.gave_up" => "Gave up after 3 tries",
         _ => return None,
     })
+}
+
+// --- YouTube sync ---
+
+/// What an import or a sync did, in one sentence.
+pub fn import_message(report: &ImportReport) -> String {
+    let skipped = if report.skipped > 0 { format!(", {} skipped", report.skipped) } else { String::new() };
+    match (report.is_new, report.added) {
+        (Some(false), Some(0)) => format!("\"{}\" is already up to date with YouTube.", report.name),
+        (Some(false), Some(added)) => format!(
+            "Updated \"{}\" from YouTube: {added} new song{} added ({} in total){skipped}.",
+            report.name,
+            if added == 1 { "" } else { "s" },
+            report.entries,
+        ),
+        _ => format!(
+            "Imported \"{}\": {} songs, {} new to the library{skipped}.",
+            report.name, report.entries, report.tracks_created,
+        ),
+    }
+}
+
+/// "just now", "5 min ago", "3 h ago", "2 days ago" for an ISO timestamp.
+pub fn time_ago(iso: &str) -> String {
+    let then = js_sys::Date::new(&wasm_bindgen::JsValue::from_str(iso)).get_time();
+    if then.is_nan() {
+        return iso.to_owned();
+    }
+    let minutes = ((js_sys::Date::now() - then) / 60_000.0).max(0.0) as u64;
+    match minutes {
+        0 => "just now".to_owned(),
+        1..=59 => format!("{minutes} min ago"),
+        60..=1_439 => format!("{} h ago", minutes / 60),
+        _ => match minutes / 1_440 {
+            1 => "yesterday".to_owned(),
+            days => format!("{days} days ago"),
+        },
+    }
 }

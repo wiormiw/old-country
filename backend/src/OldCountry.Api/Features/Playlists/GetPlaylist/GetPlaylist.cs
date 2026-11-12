@@ -46,7 +46,9 @@ internal sealed class GetPlaylistHandler(OldCountryDbContext db) : IQueryHandler
             entries,
             entries.Aggregate(TimeSpan.Zero, (total, entry) => total + entry.Duration),
             playlist.CreatedAt,
-            playlist.UpdatedAt);
+            playlist.UpdatedAt,
+            playlist.YouTubeListId,
+            playlist.YouTubeSyncedAt);
     }
 }
 
