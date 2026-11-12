@@ -5,7 +5,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use shared::{
     AppError, DownloadStatus, ImportReport, Paged, PlayerState, Playlist, PlaylistSummary, QueueItem, RepeatMode,
-    ScanStatus, Settings, Track, YouTubeResult,
+    ScanStatus, Settings, Track, TrackDetail, YouTubeResult,
 };
 use wasm_bindgen::prelude::*;
 
@@ -59,8 +59,20 @@ pub async fn check_server(url: String) -> Result<(), AppError> {
 
 // --- Library ---
 
-pub async fn list_tracks(page: u32, page_size: u32) -> Result<Paged<Track>, AppError> {
-    call("list_tracks", args!(page: u32 = page, page_size: u32 = page_size)).await
+pub async fn list_tracks(page: u32, page_size: u32, search: Option<String>) -> Result<Paged<Track>, AppError> {
+    call("list_tracks", args!(page: u32 = page, page_size: u32 = page_size, search: Option<String> = search)).await
+}
+
+pub async fn get_track(id: String) -> Result<TrackDetail, AppError> {
+    call("get_track", args!(id: String = id)).await
+}
+
+pub async fn logs_folder() -> Result<String, AppError> {
+    call("logs_folder", NoArgs {}).await
+}
+
+pub async fn open_logs_folder() -> Result<(), AppError> {
+    call("open_logs_folder", NoArgs {}).await
 }
 
 pub async fn scan_library() -> Result<ScanStatus, AppError> {

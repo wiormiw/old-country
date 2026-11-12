@@ -13,6 +13,12 @@ pub fn SettingsPage() -> impl IntoView {
     let error = RwSignal::new(None::<AppError>);
     let checking = RwSignal::new(false);
 
+    let logs = RwSignal::new(String::new());
+    leptos::task::spawn_local(async move {
+        if let Ok(folder) = ipc::logs_folder().await {
+            logs.set(folder);
+        }
+    });
     leptos::task::spawn_local(async move {
         if let Ok(settings) = ipc::get_settings().await {
             server.set(settings.server_url.clone());
@@ -78,6 +84,20 @@ pub fn SettingsPage() -> impl IntoView {
                     <button class="ghost" type="button" on:click=check prop:disabled=move || checking.get()>"Test connection"</button>
                 </div>
             </form>
+
+            <section class="panel">
+                <h2>"Logs"</h2>
+                <p class="muted">"The desktop app writes its log here (kept to 3 files of 5 MB):"</p>
+                <p><code>{move || logs.get()}</code></p>
+                <p class="muted">"The server's logs, traces and metrics are in its Aspire dashboard, at http://localhost:15888 when it runs on this machine."</p>
+                <button class="ghost" on:click=move |_| {
+                    leptos::task::spawn_local(async move {
+                        if let Err(e) = ipc::open_logs_folder().await {
+                            notice.error(e.message);
+                        }
+                    });
+                }>"Open logs folder"</button>
+            </section>
         </section>
     }
 }

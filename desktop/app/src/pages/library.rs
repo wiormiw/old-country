@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use leptos_router::components::A;
 use shared::timespan::display;
 use shared::{ScanStatus, Track};
 
@@ -11,7 +12,29 @@ const PAGE_SIZE: u32 = 50;
 #[component]
 pub fn Library() -> impl IntoView {
     let page = RwSignal::new(1u32);
-    let tracks = LocalResource::new(move || ipc::list_tracks(page.get(), PAGE_SIZE));
+    let typed = RwSignal::new(String::new());
+    let search = RwSignal::new(String::new());
+    // Search 300 ms after typing stops, from the first page.
+    Effect::new(move |pending: Option<Option<leptos::prelude::TimeoutHandle>>| {
+        let text = typed.get();
+        if let Some(Some(handle)) = pending {
+            handle.clear();
+        }
+        set_timeout_with_handle(
+            move || {
+                if search.get_untracked() != text {
+                    search.set(text);
+                    page.set(1);
+                }
+            },
+            std::time::Duration::from_millis(300),
+        )
+        .ok()
+    });
+    let tracks = LocalResource::new(move || {
+        let text = search.get();
+        ipc::list_tracks(page.get(), PAGE_SIZE, (!text.trim().is_empty()).then_some(text))
+    });
 
     view! {
         <section class="page">
@@ -19,9 +42,13 @@ pub fn Library() -> impl IntoView {
                 <h1>"Library"</h1>
                 <ScanControl on_finished=move || tracks.refetch() />
             </header>
+            <input type="search" class="search" placeholder="Search titles and artists" aria-label="Search the library" bind:value=typed />
             {move || match tracks.get() {
                 None => view! { <Loading /> }.into_any(),
                 Some(Err(error)) => view! { <ErrorView error /> }.into_any(),
+                Some(Ok(paged)) if paged.items.is_empty() && !search.with(|s| s.trim().is_empty()) => view! {
+                    <p class="muted">"Nothing matches that search."</p>
+                }.into_any(),
                 Some(Ok(paged)) if paged.items.is_empty() => view! {
                     <p class="muted">"No tracks yet. Set your music folders on the server (Library:Roots) and scan."</p>
                 }.into_any(),
@@ -69,7 +96,7 @@ fn TrackTable(tracks: Vec<Track>) -> impl IntoView {
                                 <button class="icon row-play" aria-label="Play"
                                     on:click=move |_| leptos::task::spawn_local(ipc::play(queue.clone(), i))>"▶"</button>
                             </td>
-                            <td>{track.title.clone()}</td>
+                            <td><A href=format!("/tracks/{}", track.id) attr:class="title-link">{track.title.clone()}</A></td>
                             <td class="muted">{track.artist.clone()}</td>
                             <td class="col-time">{display(track.duration)}</td>
                             <td><span class="badge" class:badge-offline=track.is_available_offline>{source}</span></td>

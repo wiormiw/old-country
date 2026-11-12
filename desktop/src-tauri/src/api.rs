@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 use shared::{
     AppError, DownloadStatus, ImportReport, Paged, Playlist, PlaylistSummary, ProblemDetails, ScanStatus, Track,
-    YouTubeResult,
+    TrackDetail, YouTubeResult,
 };
 
 use crate::player::ServerUrl;
@@ -39,8 +39,16 @@ impl ApiClient {
 
     // --- Tracks ---
 
-    pub async fn list_tracks(&self, page: u32, page_size: u32) -> Result<Paged<Track>, AppError> {
-        self.get_query("/api/tracks", &[("page", page.to_string()), ("pageSize", page_size.to_string())]).await
+    pub async fn list_tracks(&self, page: u32, page_size: u32, search: Option<&str>) -> Result<Paged<Track>, AppError> {
+        let mut query = vec![("page", page.to_string()), ("pageSize", page_size.to_string())];
+        if let Some(search) = search.map(str::trim).filter(|s| !s.is_empty()) {
+            query.push(("search", search.to_owned()));
+        }
+        self.get_query("/api/tracks", &query).await
+    }
+
+    pub async fn get_track(&self, id: &str) -> Result<TrackDetail, AppError> {
+        self.get(&format!("/api/tracks/{id}")).await
     }
 
     pub async fn scan_library(&self) -> Result<ScanStatus, AppError> {

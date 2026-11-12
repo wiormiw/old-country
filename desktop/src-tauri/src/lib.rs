@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use shared::PLAYER_STATE_EVENT;
 use tauri::{Emitter, Manager};
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
 use crate::api::ApiClient;
 use crate::commands::AppState;
@@ -18,10 +19,27 @@ use crate::player::{PlayerHandle, StartSettings};
 use crate::player::cache::AudioCache;
 use crate::player::media_keys::MediaKeys;
 
+/// Log file name (without extension) in the app's log folder.
+pub const LOG_FILE: &str = "old-country";
+
 pub fn run() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,old_country_lib=debug")).init();
+    // Logs go to the terminal and to a file in the app's log folder
+    // (Linux: ~/.local/share/dev.wiormiw.oldcountry/logs/old-country.log), kept to 3 x 5 MB.
+    let logging = tauri_plugin_log::Builder::new()
+        .clear_targets()
+        .targets([
+            Target::new(TargetKind::Stdout),
+            Target::new(TargetKind::LogDir { file_name: Some(LOG_FILE.into()) }),
+        ])
+        .level(log::LevelFilter::Info)
+        .level_for("old_country_lib", log::LevelFilter::Debug)
+        .max_file_size(5 * 1024 * 1024)
+        .rotation_strategy(RotationStrategy::KeepSome(3))
+        .build();
 
     tauri::Builder::default()
+        .plugin(logging)
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
             let settings = settings::load(app.handle());
@@ -52,6 +70,9 @@ pub fn run() {
                 let _ = media_keys.set(keys);
             }
 
+            #[cfg(debug_assertions)]
+            watch_ui_script(app.handle().clone());
+
             app.manage(AppState {
                 api: ApiClient::new(http, Arc::clone(&server)),
                 player,
@@ -66,6 +87,9 @@ pub fn run() {
             commands::save_settings,
             commands::check_server,
             commands::list_tracks,
+            commands::get_track,
+            commands::logs_folder,
+            commands::open_logs_folder,
             commands::scan_library,
             commands::scan_status,
             commands::list_playlists,
@@ -96,4 +120,32 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("old-country failed to start");
+}
+
+/// Debug builds only: when `OLDCOUNTRY_UI_SCRIPT` names a file, runs its JavaScript in the window
+/// each time the file changes. Drives the real UI step by step for screenshots and manual checks
+/// (the docs/screenshots in the README are made this way). Not compiled into release builds.
+#[cfg(debug_assertions)]
+fn watch_ui_script(app: tauri::AppHandle) {
+    let Ok(path) = std::env::var("OLDCOUNTRY_UI_SCRIPT") else { return };
+    log::info!("running UI scripts from {path} whenever it changes");
+    std::thread::spawn(move || {
+        let mut last_run = None;
+        loop {
+            std::thread::sleep(Duration::from_millis(400));
+            let Ok(modified) = std::fs::metadata(&path).and_then(|m| m.modified()) else { continue };
+            if last_run == Some(modified) {
+                continue;
+            }
+            last_run = Some(modified);
+            match (std::fs::read_to_string(&path), app.get_webview_window("main")) {
+                (Ok(script), Some(window)) => {
+                    if let Err(error) = window.eval(&script) {
+                        log::warn!("UI script failed: {error}");
+                    }
+                }
+                _ => log::debug!("UI script or window not ready yet"),
+            }
+        }
+    });
 }

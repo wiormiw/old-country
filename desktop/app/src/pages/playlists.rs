@@ -87,6 +87,14 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
     let id = playlist.id.clone();
     let queue: Vec<_> = playlist.entries.iter().map(entry_item).collect();
     let count = playlist.entries.len();
+    let filter = RwSignal::new(String::new());
+    let filtering = move || !filter.with(|f| f.trim().is_empty());
+    let matches = move |title: &str, artist: &str| {
+        filter.with(|f| {
+            let f = f.trim().to_lowercase();
+            f.is_empty() || title.to_lowercase().contains(&f) || artist.to_lowercase().contains(&f)
+        })
+    };
 
     // Runs a playlist change, then reloads (positions shift after a move or removal).
     let change = move |work: std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), AppError>>>>| {
@@ -165,6 +173,7 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
             view! { <p class="muted">"This playlist is empty. Add tracks from the Library."</p> }.into_any()
         } else {
             view! {
+                <input type="search" class="search" placeholder="Find in this playlist" aria-label="Find in this playlist" bind:value=filter />
                 <table class="tracks">
                     <thead><tr><th class="col-num">"#"</th><th>"Title"</th><th>"Artist"</th><th class="col-time">"Time"</th><th class="col-actions"></th></tr></thead>
                     <tbody>
@@ -172,19 +181,22 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
                             let position = entry.position;
                             let queue = queue.clone();
                             let (up, down, remove) = (id.clone(), id.clone(), id.clone());
+                            let (title, artist) = (entry.title.clone(), entry.artist.clone());
                             view! {
-                                <tr class:unavailable=!entry.is_available_offline && entry.you_tube_video_id.is_none()>
+                                <tr class:unavailable=!entry.is_available_offline && entry.you_tube_video_id.is_none()
+                                    style:display=move || if matches(&title, &artist) { "" } else { "none" }>
                                     <td class="col-num">
                                         <button class="icon row-play" aria-label="Play"
                                             on:click=move |_| leptos::task::spawn_local(ipc::play(queue.clone(), i))>"▶"</button>
                                     </td>
-                                    <td>{entry.title.clone()}</td>
+                                    <td><A href=format!("/tracks/{}", entry.track_id) attr:class="title-link">{entry.title.clone()}</A></td>
                                     <td class="muted">{entry.artist.clone()}</td>
                                     <td class="col-time">{display(entry.duration)}</td>
                                     <td class="col-actions">
-                                        <button class="icon" aria-label="Move up" prop:disabled=i == 0
+                                        // Moving only makes sense in the whole list, not a filtered one.
+                                        <button class="icon" aria-label="Move up" prop:disabled=move || { i == 0 || filtering() }
                                             on:click=move |_| change(Box::pin(ipc::move_playlist_entry(up.clone(), position, position - 1)))>"↑"</button>
-                                        <button class="icon" aria-label="Move down" prop:disabled=i + 1 == count
+                                        <button class="icon" aria-label="Move down" prop:disabled=move || { i + 1 == count || filtering() }
                                             on:click=move |_| change(Box::pin(ipc::move_playlist_entry(down.clone(), position, position + 1)))>"↓"</button>
                                         <button class="icon" aria-label="Remove"
                                             on:click=move |_| change(Box::pin(ipc::remove_playlist_entry(remove.clone(), position)))>"✕"</button>

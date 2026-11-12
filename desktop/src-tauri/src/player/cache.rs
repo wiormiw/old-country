@@ -6,6 +6,7 @@
 //! yet fetched), and a finished file is renamed into place and replays without the network.
 //! The cache is trimmed least-recently-played first to a size limit.
 
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -111,32 +112,42 @@ impl MediaSource for ProgressiveReader {
     }
 }
 
+/// A download in progress, which later readers join instead of downloading again.
+struct InFlight {
+    part: PathBuf,
+    extension: Option<String>,
+    shared: Arc<Shared>,
+}
+
+type InFlightMap = Arc<Mutex<HashMap<String, InFlight>>>;
+
 /// The local audio cache.
 pub struct AudioCache {
     dir: PathBuf,
     http: reqwest::Client,
     runtime: tokio::runtime::Handle,
+    in_flight: InFlightMap,
+    /// One "start a download" per key at a time, so a prefetch and a play of the same song
+    /// can't both start one. Per key, so a slow YouTube fetch never holds up other songs.
+    starting: Mutex<HashMap<String, Arc<Mutex<()>>>>,
 }
 
 impl AudioCache {
     pub fn new(dir: PathBuf, http: reqwest::Client, runtime: tokio::runtime::Handle) -> io::Result<Self> {
         fs::create_dir_all(&dir)?;
-        Ok(Self { dir, http, runtime })
+        Ok(Self { dir, http, runtime, in_flight: Arc::default(), starting: Mutex::default() })
     }
 
-    /// Opens audio for playback: from the cache when it's complete there, otherwise by starting a
-    /// download from `base_url` and returning as soon as the response headers arrive.
-    /// Blocking: call it from a loader thread, not the UI.
+    /// Opens audio for playback: from the cache when it's complete there, by joining a download
+    /// already running (a prefetch), or by starting one from `base_url` and returning as soon as
+    /// the response headers arrive. Blocking: call it from a loader thread, not the UI.
     pub fn open(&self, base_url: &str, audio: &AudioRef) -> Result<OpenedAudio, AppError> {
         let key = audio.cache_key();
-        if let Some(path) = self.find_cached(&key) {
-            touch(&path);
-            let file = File::open(&path).map_err(|e| AppError::new("cache.unreadable", e.to_string()))?;
-            return Ok(OpenedAudio {
-                reader: Box::new(file),
-                extension: path.extension().and_then(|e| e.to_str()).map(str::to_owned),
-                from_cache: true,
-            });
+        let gate = Arc::clone(self.starting.lock().expect("starting lock").entry(key.clone()).or_default());
+        let _starting = gate.lock().expect("start gate");
+
+        if let Some(opened) = self.open_existing(&key)? {
+            return Ok(opened);
         }
 
         let url = format!("{}{}", base_url.trim_end_matches('/'), audio.path());
@@ -155,15 +166,51 @@ impl AudioCache {
 
         let shared = Arc::new(Shared::default());
         shared.update(|p| p.total = response.content_length());
-
-        let task_shared = Arc::clone(&shared);
-        self.runtime.spawn(download(response, writer, part_path, final_path, task_shared));
+        self.in_flight.lock().expect("in-flight lock").insert(
+            key.clone(),
+            InFlight { part: part_path.clone(), extension: extension.clone(), shared: Arc::clone(&shared) },
+        );
+        let job = Download { key, part: part_path, done: final_path, shared: Arc::clone(&shared), in_flight: Arc::clone(&self.in_flight) };
+        self.runtime.spawn(job.run(response, writer));
 
         Ok(OpenedAudio {
             reader: Box::new(ProgressiveReader { file: reader_file, position: 0, shared }),
             extension,
             from_cache: false,
         })
+    }
+
+    /// Starts fetching `audio` into the cache in the background, so it plays at once later.
+    /// Does nothing when it's cached or already downloading.
+    pub fn prefetch(self: &Arc<Self>, base_url: String, audio: AudioRef) {
+        let cache = Arc::clone(self);
+        std::thread::spawn(move || match cache.open(&base_url, &audio) {
+            Ok(opened) if !opened.from_cache => log::debug!("prefetching {}", audio.cache_key()),
+            Ok(_) => {}
+            Err(error) => log::debug!("prefetch of {} failed: {}", audio.cache_key(), error.message),
+        });
+    }
+
+    /// A finished cached file, or a reader joining a download in progress.
+    fn open_existing(&self, key: &str) -> Result<Option<OpenedAudio>, AppError> {
+        // Under the in-flight lock, a download can't finish (rename its file) mid-way through.
+        let in_flight = self.in_flight.lock().expect("in-flight lock");
+        if let Some(download) = in_flight.get(key) {
+            let file = File::open(&download.part).map_err(|e| AppError::new("cache.unreadable", e.to_string()))?;
+            return Ok(Some(OpenedAudio {
+                reader: Box::new(ProgressiveReader { file, position: 0, shared: Arc::clone(&download.shared) }),
+                extension: download.extension.clone(),
+                from_cache: false,
+            }));
+        }
+        let Some(path) = self.find_cached(key) else { return Ok(None) };
+        touch(&path);
+        let file = File::open(&path).map_err(|e| AppError::new("cache.unreadable", e.to_string()))?;
+        Ok(Some(OpenedAudio {
+            reader: Box::new(file),
+            extension: path.extension().and_then(|e| e.to_str()).map(str::to_owned),
+            from_cache: true,
+        }))
     }
 
     fn find_cached(&self, key: &str) -> Option<PathBuf> {
@@ -179,28 +226,43 @@ impl AudioCache {
     }
 }
 
-async fn download(response: reqwest::Response, mut writer: File, part: PathBuf, done: PathBuf, shared: Arc<Shared>) {
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let result = chunk.map_err(|e| e.to_string()).and_then(|bytes| {
-            writer.write_all(&bytes).map(|()| bytes.len()).map_err(|e| e.to_string())
-        });
-        match result {
-            Ok(len) => shared.update(|p| p.written += len as u64),
-            Err(reason) => {
-                log::warn!("audio download failed: {reason}");
-                let _ = fs::remove_file(&part);
-                shared.update(|p| p.failed = Some(reason));
-                return;
+struct Download {
+    key: String,
+    part: PathBuf,
+    done: PathBuf,
+    shared: Arc<Shared>,
+    in_flight: InFlightMap,
+}
+
+impl Download {
+    async fn run(self, response: reqwest::Response, mut writer: File) {
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let result = chunk
+                .map_err(|e| e.to_string())
+                .and_then(|bytes| writer.write_all(&bytes).map(|()| bytes.len()).map_err(|e| e.to_string()));
+            match result {
+                Ok(len) => self.shared.update(|p| p.written += len as u64),
+                Err(reason) => {
+                    log::warn!("audio download failed: {reason}");
+                    let mut in_flight = self.in_flight.lock().expect("in-flight lock");
+                    let _ = fs::remove_file(&self.part);
+                    in_flight.remove(&self.key);
+                    self.shared.update(|p| p.failed = Some(reason));
+                    return;
+                }
             }
         }
+        let _ = writer.flush();
+        // Under the in-flight lock, so no reader is joining while the file moves. Readers already
+        // reading keep their open handle across the rename (same inode).
+        let mut in_flight = self.in_flight.lock().expect("in-flight lock");
+        if let Err(error) = fs::rename(&self.part, &self.done) {
+            log::warn!("couldn't move a finished download into the cache: {error}");
+        }
+        in_flight.remove(&self.key);
+        self.shared.update(|p| p.done = true);
     }
-    let _ = writer.flush();
-    // Readers keep their open handle across the rename (same inode).
-    if let Err(error) = fs::rename(&part, &done) {
-        log::warn!("couldn't move a finished download into the cache: {error}");
-    }
-    shared.update(|p| p.done = true);
 }
 
 fn unreachable(error: reqwest::Error) -> AppError {

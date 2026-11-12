@@ -64,7 +64,7 @@ fn plays_every_library_track_seeks_skips_and_streams_youtube() {
     };
     let rig = rig(&base);
 
-    let page = rig.runtime.block_on(rig.api.list_tracks(1, 50)).expect("list tracks");
+    let page = rig.runtime.block_on(rig.api.list_tracks(1, 50, None)).expect("list tracks");
     assert!(!page.items.is_empty(), "the server's library is empty; scan some music first");
     let queue: Vec<QueueItem> = page
         .items

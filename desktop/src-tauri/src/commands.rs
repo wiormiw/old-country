@@ -5,9 +5,10 @@ use std::sync::{Arc, Mutex};
 
 use shared::{
     AppError, DownloadStatus, ImportReport, Paged, PlayerState, Playlist, PlaylistSummary, QueueItem, RepeatMode,
-    ScanStatus, Settings, Track, YouTubeResult,
+    ScanStatus, Settings, Track, TrackDetail, YouTubeResult,
 };
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
 use crate::api::ApiClient;
 use crate::player::cache::AudioCache;
@@ -57,8 +58,39 @@ pub async fn check_server(state: State<'_, AppState>, url: String) -> Reply<()> 
 // --- Library ---
 
 #[tauri::command]
-pub async fn list_tracks(state: State<'_, AppState>, page: u32, page_size: u32) -> Reply<Paged<Track>> {
-    state.api.list_tracks(page, page_size).await
+pub async fn list_tracks(
+    state: State<'_, AppState>,
+    page: u32,
+    page_size: u32,
+    search: Option<String>,
+) -> Reply<Paged<Track>> {
+    state.api.list_tracks(page, page_size, search.as_deref()).await
+}
+
+#[tauri::command]
+pub async fn get_track(state: State<'_, AppState>, id: String) -> Reply<TrackDetail> {
+    state.api.get_track(&id).await
+}
+
+// --- Logs ---
+
+/// Where the desktop app writes its log file.
+#[tauri::command]
+pub fn logs_folder(app: AppHandle) -> Reply<String> {
+    app.path()
+        .app_log_dir()
+        .map(|dir| dir.display().to_string())
+        .map_err(|e| AppError::new("logs.unavailable", e.to_string()))
+}
+
+/// Opens the log folder in the file manager.
+#[tauri::command]
+pub fn open_logs_folder(app: AppHandle) -> Reply<()> {
+    let dir = app.path().app_log_dir().map_err(|e| AppError::new("logs.unavailable", e.to_string()))?;
+    std::fs::create_dir_all(&dir).map_err(|e| AppError::new("logs.unavailable", e.to_string()))?;
+    app.opener()
+        .open_path(dir.display().to_string(), None::<&str>)
+        .map_err(|e| AppError::new("logs.unavailable", e.to_string()))
 }
 
 #[tauri::command]

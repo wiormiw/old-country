@@ -21,6 +21,9 @@ use super::source::DecodedSource;
 const TICK: Duration = Duration::from_millis(250);
 /// "Previous" within this many seconds goes to the previous track; later, it restarts this one.
 const RESTART_THRESHOLD: f64 = 3.0;
+/// Unplayable songs in a row skipped before the player gives up (so one bad video doesn't stop a
+/// playlist, and a dead server doesn't spin through the whole queue).
+const MAX_SKIPS: u32 = 3;
 
 /// Base URL of the server, shared with the API client and changed from Settings.
 pub type ServerUrl = Arc<RwLock<String>>;
@@ -90,6 +93,7 @@ impl PlayerHandle {
             duration: None,
             volume,
             error: None,
+            failures: 0,
         };
         thread::Builder::new()
             .name("player".into())
@@ -137,6 +141,8 @@ struct Engine {
     duration: Option<f64>,
     volume: f32,
     error: Option<String>,
+    /// Songs that failed to load in a row.
+    failures: u32,
 }
 
 impl Engine {
@@ -246,6 +252,7 @@ impl Engine {
                 self.buffering = false;
                 match result {
                     Ok(source) => {
+                        self.failures = 0;
                         self.duration = source.duration().or(self.duration);
                         if let Some(player) = output {
                             player.append(source);
@@ -254,15 +261,37 @@ impl Engine {
                             }
                             self.loaded = true;
                         }
+                        self.prefetch_next();
                     }
                     Err(reason) => {
-                        log::warn!("couldn't play the current item: {reason}");
-                        self.error = Some(reason);
-                        self.want_playing = false;
+                        let title = self.queue.current().map(|i| i.title.clone()).unwrap_or_default();
+                        log::warn!("couldn't play \"{title}\": {reason}");
+                        self.failures += 1;
+                        let can_skip = self.failures < MAX_SKIPS && self.queue.peek_next().is_some() && self.want_playing;
+                        if can_skip {
+                            self.queue.advance(false);
+                            self.start(output);
+                            // After start(), which clears errors: say what was skipped and why.
+                            self.error = Some(format!("Skipped \"{title}\": {reason}"));
+                        } else {
+                            self.error = Some(reason);
+                            self.want_playing = false;
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// Fetches the song that plays next into the cache, so it starts at once when its turn comes.
+    /// For YouTube songs this hides the server's 5-10 s yt-dlp fetch entirely.
+    fn prefetch_next(&self) {
+        let Some(next) = self.queue.peek_next() else { return };
+        if self.queue.current().is_some_and(|current| current.audio == next.audio) {
+            return; // repeat-one: it's already playing
+        }
+        let base = self.server.read().expect("server url lock").clone();
+        self.cache.prefetch(base, next.audio.clone());
     }
 
     /// Stops whatever plays and starts loading the queue's current item (if any).

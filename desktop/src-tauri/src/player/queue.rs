@@ -136,6 +136,20 @@ impl Queue {
         self.current()
     }
 
+    /// What would play after the current song ends on its own, without moving: for prefetching.
+    /// `None` at the end of a shuffled cycle (the next cycle isn't shuffled yet) or of the queue.
+    pub fn peek_next(&self) -> Option<&QueueItem> {
+        let cursor = self.cursor?;
+        if self.repeat == RepeatMode::One {
+            return self.current();
+        }
+        match self.order.get(cursor + 1) {
+            Some(&next) => Some(&self.items[next]),
+            None if self.repeat == RepeatMode::All && !self.shuffle => self.order.first().map(|&i| &self.items[i]),
+            None => None,
+        }
+    }
+
     /// Back to the song heard before this one, staying on the first.
     pub fn back(&mut self) -> Option<&QueueItem> {
         if let Some(c) = self.cursor {
@@ -299,6 +313,31 @@ mod tests {
         assert_eq!(queue.advance(false).unwrap().title, "Song 2");
         // Skipping past the end with repeat-one wraps rather than stopping.
         assert_eq!(queue.advance(false).unwrap().title, "Song 0");
+    }
+
+    #[test]
+    fn peeking_shows_what_plays_next_without_moving() {
+        let mut queue = queue(1);
+        queue.replace(items(3), 1);
+        assert_eq!(queue.peek_next().unwrap().title, "Song 2");
+        assert_eq!(queue.index(), Some(1));
+        queue.advance(true);
+        assert!(queue.peek_next().is_none(), "end of the queue without repeat");
+        queue.set_repeat(RepeatMode::All);
+        assert_eq!(queue.peek_next().unwrap().title, "Song 0");
+        queue.set_repeat(RepeatMode::One);
+        assert_eq!(queue.peek_next().unwrap().title, "Song 2");
+    }
+
+    #[test]
+    fn peeking_while_shuffled_follows_the_bag() {
+        let mut queue = queue(5);
+        queue.set_shuffle(true);
+        queue.replace(items(5), 0);
+        let expected = queue.order()[1];
+        assert_eq!(queue.peek_next().map(|i| i.title.clone()), Some(format!("Song {expected}")));
+        queue.advance(true);
+        assert_eq!(queue.index(), Some(expected));
     }
 
     #[test]
