@@ -16,5 +16,7 @@
     <IsPackable>false</IsPackable>
     <!-- xunit.v3 on Microsoft.Testing.Platform: test projects are executables. -->
     <OutputType>Exe</OutputType>
+    <!-- Keep test results in each project's bin/, instead of a TestResults folder wherever dotnet test runs. -->
+    <TestingPlatformCommandLineArguments>$(TestingPlatformCommandLineArguments) --results-directory "$(MSBuildProjectDirectory)/bin/TestResults"</TestingPlatformCommandLineArguments>
   </PropertyGroup>
 </Project>

@@ -14,6 +14,13 @@ public sealed class YouTubeMusicOptions
     public string YtDlpPath { get; init; } = "yt-dlp";
 
     /// <summary>
+    /// The JavaScript runtime yt-dlp uses to solve YouTube's challenges: node, deno, quickjs or bun,
+    /// optionally with its location ("node:/usr/bin/node"). Node is the default because Deno's
+    /// development ends in 2027. Empty leaves the choice to yt-dlp (which only enables Deno).
+    /// </summary>
+    public string JsRuntime { get; init; } = "node";
+
+    /// <summary>
     /// A Netscape-format cookies.txt exported from a browser signed in to YouTube Music. Needed
     /// for private playlists and liked songs; public search, streaming and downloads work without.
     /// </summary>
@@ -59,6 +66,9 @@ internal sealed class YouTubeMusicOptionsValidator : AbstractValidator<YouTubeMu
     public YouTubeMusicOptionsValidator()
     {
         RuleFor(o => o.YtDlpPath).NotEmpty().WithMessage("YtDlpPath can't be empty; use \"yt-dlp\" to find it on PATH.");
+        RuleFor(o => o.JsRuntime)
+            .Must(BeAKnownRuntime).When(o => !string.IsNullOrEmpty(o.JsRuntime))
+            .WithMessage("JsRuntime must be node, deno, quickjs or bun, optionally followed by :<path> (or empty for yt-dlp's default).");
         RuleFor(o => o.CookiesFile!)
             .Must(Path.IsPathFullyQualified).When(o => o.CookiesFile is not null)
             .WithMessage("CookiesFile must be an absolute path to a cookies.txt file.");
@@ -76,5 +86,14 @@ internal sealed class YouTubeMusicOptionsValidator : AbstractValidator<YouTubeMu
         RuleFor(o => o.CommandTimeout)
             .InclusiveBetween(TimeSpan.FromSeconds(10), TimeSpan.FromHours(1))
             .WithMessage("CommandTimeout must be between 10 seconds and 1 hour.");
+    }
+
+    private static readonly string[] Runtimes = ["node", "deno", "quickjs", "bun"];
+
+    private static bool BeAKnownRuntime(string value)
+    {
+        var name = value.Split(':', 2)[0];
+        var hasEmptyPath = value.Length == name.Length + 1;
+        return Runtimes.Contains(name, StringComparer.Ordinal) && !hasEmptyPath;
     }
 }

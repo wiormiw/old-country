@@ -32,7 +32,7 @@ The backend runs on a home server; the desktop app talks to it over the LAN.
 
 - .NET 11 SDK (`dotnet --list-sdks` shows `11.0.x`)
 - Docker (Postgres for development and integration tests)
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) and ffmpeg (YouTube Music features)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp), ffmpeg and Node.js 22+ (YouTube Music features; yt-dlp runs YouTube's JavaScript in Node)
 
 **Start everything** (Postgres container, the API, and the Aspire dashboard for logs and traces):
 
@@ -77,6 +77,7 @@ Migrations run on startup in Development. The API's OpenAPI document is at `/ope
 | `Library:RescanInterval` | `06:00:00` | Scheduled rescan; `00:00:00` turns it off |
 | `Library:ScanOnStartup` | `true` | Scan when the server starts |
 | `YouTubeMusic:YtDlpPath` | `yt-dlp` | yt-dlp executable |
+| `YouTubeMusic:JsRuntime` | `node` | JavaScript runtime yt-dlp uses for YouTube: `node`, `deno`, `quickjs` or `bun`, optionally `node:/path/to/node`. Empty uses yt-dlp's default (Deno, whose development ends in 2027). |
 | `YouTubeMusic:CookiesFile` | none | Browser-exported `cookies.txt`; needed for private playlists and liked songs |
 | `YouTubeMusic:DownloadFolder` | `<first root>/YouTube Music` | Must be inside a library folder |
 | `YouTubeMusic:AudioFormat` | `opus` | `opus`, `m4a`, `mp3` or `flac` |
@@ -89,7 +90,7 @@ Bad configuration stops the server at startup with a message naming the setting.
 
 Aspire's AppHost is a development tool: it starts Postgres and the API on your machine and shows
 the dashboard. On a server, `backend/deploy/` runs the same pieces with Docker Compose. That means
-PostgreSQL 18, the API image (with yt-dlp, Deno and ffmpeg built in), and optionally Aspire's
+PostgreSQL 18, the API image (with yt-dlp, Node.js and ffmpeg built in), and optionally Aspire's
 dashboard on its own.
 
 ```bash

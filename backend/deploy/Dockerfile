@@ -1,5 +1,6 @@
 # The old-country API as a container: the published app plus what its YouTube Music features run
-# (yt-dlp, the Deno JavaScript runtime yt-dlp needs for YouTube, and ffmpeg for audio conversion).
+# (yt-dlp, Node.js as the JavaScript runtime yt-dlp needs for YouTube, and ffmpeg for audio conversion).
+# Node rather than Deno, yt-dlp's default: Deno's development ends in 2027 (YouTubeMusic:JsRuntime).
 # Build context is backend/:  docker build -f deploy/Dockerfile .
 
 FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
@@ -13,13 +14,11 @@ RUN dotnet restore src/OldCountry.Api/OldCountry.Api.csproj
 COPY src/ src/
 RUN dotnet publish src/OldCountry.Api/OldCountry.Api.csproj -c Release -o /app --no-restore
 
-FROM denoland/deno:bin-2.9.8 AS deno
-
 FROM mcr.microsoft.com/dotnet/aspnet:11.0
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-COPY --from=deno /deno /usr/local/bin/deno
+    && apt-get install -y --no-install-recommends ffmpeg nodejs curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && node --version
 
 # yt-dlp breaks whenever YouTube changes; bump YTDLP_VERSION (deploy/.env) and rebuild to update.
 ARG YTDLP_VERSION=2026.10.26
@@ -32,7 +31,7 @@ RUN set -eux; \
 
 # The container may run as any user id (compose sets your own, so files in the music folder are
 # yours); point every cache at /tmp, which any user can write.
-ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache DENO_DIR=/tmp/.deno
+ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache YouTubeMusic__JsRuntime=node
 
 WORKDIR /app
 COPY --from=build /app .

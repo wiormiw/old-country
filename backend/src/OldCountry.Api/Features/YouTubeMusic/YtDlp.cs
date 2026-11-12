@@ -124,6 +124,13 @@ internal sealed partial class YtDlpProcess(IOptions<YouTubeMusicOptions> options
             StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var argument in (string[])["--no-warnings", "--ignore-config"]) start.ArgumentList.Add(argument);
+        if (Settings.JsRuntime is { Length: > 0 } runtime)
+        {
+            // Replace yt-dlp's default runtime list (Deno only) with the configured one.
+            start.ArgumentList.Add("--no-js-runtimes");
+            start.ArgumentList.Add("--js-runtimes");
+            start.ArgumentList.Add(runtime);
+        }
         if (Settings.CookiesFile is { } cookies)
         {
             start.ArgumentList.Add("--cookies");

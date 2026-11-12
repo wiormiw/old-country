@@ -48,6 +48,17 @@ public sealed class YtDlpProcessTests : IDisposable
     }
 
     [Fact]
+    public async Task The_configured_javascript_runtime_replaces_yt_dlps_default()
+    {
+        // Echo every argument back as the title.
+        var ytDlp = WithScript("""printf '{"title":"t","entries":[{"id":"dQw4w9WgXcQ","title":"%s","duration":10}]}' "$*" """);
+
+        var results = await ytDlp.SearchAsync("x", 1, Ct);
+
+        results.ShouldHaveSingleItem().Title.ShouldContain("--no-js-runtimes --js-runtimes node");
+    }
+
+    [Fact]
     public async Task A_non_zero_exit_becomes_a_failed_error_with_yt_dlps_reason()
     {
         var ytDlp = WithScript("""echo "ERROR: [youtube] abc: Video unavailable" >&2; exit 1""");
