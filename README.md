@@ -9,9 +9,22 @@ A personal music player: your offline library plus YouTube Music, in one place.
 | Part | Stack | Status |
 |---|---|---|
 | [`backend/`](backend/) | .NET 11 / C# 15, ASP.NET Core minimal APIs, EF Core 11, PostgreSQL 18, Aspire | Working |
-| [`desktop/`](desktop/) | Tauri v2, Leptos 0.8 (Rust/WASM) UI, native playback (rodio, symphonia, libopus) | Core tested; UI written |
+| [`desktop/`](desktop/) | Tauri v2, Leptos 0.8 (Rust/WASM) UI, native playback (rodio, symphonia, libopus) | Working |
 
 The backend runs on a home server; the desktop app talks to it over the LAN.
+
+## Screenshots
+
+![Library: search, formats, and the now-playing bar](docs/screenshots/library.png)
+
+| | |
+|---|---|
+| ![A playlist with find-in-playlist and reordering](docs/screenshots/playlist.png) | ![Song page: format, quality, file, and the playlists it's in](docs/screenshots/song.png) |
+| **Playlists**: find within a playlist, reorder, play all | **Song page**: where it plays from, quality, file, playlists |
+| ![YouTube Music search results](docs/screenshots/youtube.png) | ![Queue drawer in shuffle order with repeat-all on](docs/screenshots/queue-shuffle.png) |
+| **YouTube Music**: search, play, queue, download | **Queue**: shuffle order; songs already heard are dimmed |
+| ![Settings with the logs panel](docs/screenshots/settings.png) | |
+| **Settings**: server address, cache size, where the logs are | |
 
 ## Running the backend
 
@@ -117,6 +130,17 @@ desktop/
 and WAV files (needs ffmpeg), and covers the progressive reader, the queue, the API client against a
 stub server, and the shared types. `cargo clippy --workspace --all-targets -- -D warnings` is clean.
 
+## Logs
+
+| App | Where |
+|---|---|
+| API | The Aspire dashboard (`http://localhost:15888`): **Console** for raw output, **Structured** for searchable log events, **Traces** for each request with its SQL and yt-dlp calls. |
+| Desktop | `~/.local/share/dev.wiormiw.oldcountry/logs/old-country.log` (3 × 5 MB, rotated), plus the terminal under `cargo tauri dev`. **Settings → Logs** shows the folder and opens it. |
+
+```bash
+tail -f ~/.local/share/dev.wiormiw.oldcountry/logs/old-country.log
+```
+
 ## API at a glance
 
 | Area | Endpoints |
@@ -153,7 +177,16 @@ backend/
 
 ### YouTube Music notes
 
-Everything goes through yt-dlp, run as a child process with a timeout. Playing a YouTube track fetches its audio into a size-capped cache and serves the file, rather than relaying YouTube's stream URLs: those are bound to the resolving IP, reject the HTTP `Range` header, and for some clients are refused unless fetched exactly as yt-dlp does (tested Nov 2026). Downloading from YouTube may be against its Terms of Service; this is a personal tool.
+Everything goes through yt-dlp, run as a child process with a timeout. Playing a YouTube track fetches its audio into a size-capped cache and serves the file, rather than relaying YouTube's stream URLs: those are bound to the resolving IP, reject the HTTP `Range` header, and for some clients are refused unless fetched exactly as yt-dlp does (tested Nov 2026).
+
+Keeping YouTube playback steady:
+
+- **The server owns each fetch.** If you skip a song while its audio is still being fetched, the fetch keeps going and finishes in the cache. Two requests for the same song share one fetch.
+- **One retry.** A failed yt-dlp run is retried once after 2 seconds, since YouTube often fails just once.
+- **Prefetch.** While a song plays, the desktop app starts fetching the next one, so YouTube songs start without the wait.
+- **Skip on error.** A song that still fails is skipped, so one bad song doesn't stop the queue.
+
+Downloading from YouTube may be against its Terms of Service; this is a personal tool.
 
 ## Tests
 
