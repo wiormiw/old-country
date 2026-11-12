@@ -6,7 +6,7 @@ pub mod commands;
 pub mod player;
 pub mod settings;
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 use shared::PLAYER_STATE_EVENT;
@@ -16,6 +16,7 @@ use crate::api::ApiClient;
 use crate::commands::AppState;
 use crate::player::PlayerHandle;
 use crate::player::cache::AudioCache;
+use crate::player::media_keys::MediaKeys;
 
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,old_country_lib=debug")).init();
@@ -35,10 +36,20 @@ pub fn run() {
             let cache = Arc::new(AudioCache::new(cache_dir, http.clone(), runtime)?);
             cache.trim(settings.cache_max_megabytes * 1024 * 1024);
 
+            // Every state change goes to the UI and to the desktop's media controls. The media
+            // controls need the player handle to send commands, so they're attached right after.
             let events = app.handle().clone();
+            let media_keys: Arc<OnceLock<MediaKeys>> = Arc::new(OnceLock::new());
+            let mirror = Arc::clone(&media_keys);
             let player = PlayerHandle::spawn(Arc::clone(&cache), Arc::clone(&server), settings.volume, move |state| {
                 let _ = events.emit(PLAYER_STATE_EVENT, state);
+                if let Some(keys) = mirror.get() {
+                    keys.update(state);
+                }
             });
+            if let Some(keys) = MediaKeys::start(player.clone()) {
+                let _ = media_keys.set(keys);
+            }
 
             app.manage(AppState {
                 api: ApiClient::new(http, Arc::clone(&server)),

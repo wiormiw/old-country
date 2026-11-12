@@ -4,6 +4,7 @@
 pub mod cache;
 pub mod decoder;
 pub mod engine;
+pub mod media_keys;
 pub mod queue;
 pub mod source;
 

@@ -9,7 +9,7 @@ A personal music player: your offline library plus YouTube Music, in one place.
 | Part | Stack | Status |
 |---|---|---|
 | [`backend/`](backend/) | .NET 11 / C# 15, ASP.NET Core minimal APIs, EF Core 11, PostgreSQL 18, Aspire | Working |
-| `desktop/` | Tauri v2 + Leptos (Rust/WASM) | Not started |
+| [`desktop/`](desktop/) | Tauri v2, Leptos 0.8 (Rust/WASM) UI, native playback (rodio, symphonia, libopus) | Core tested; UI written |
 
 The backend runs on a home server; the desktop app talks to it over the LAN.
 
@@ -46,6 +46,55 @@ Migrations run on startup in Development. The API's OpenAPI document is at `/ope
 | `YouTubeMusic:StreamCacheMaxMegabytes` | `2048` | Least recently played files are evicted first |
 
 Bad configuration stops the server at startup with a message naming the setting.
+
+## Running the desktop app
+
+The desktop app is a Tauri v2 window with a Leptos UI compiled to WebAssembly. It plays audio
+natively (not through the webview), so playback keeps going while the window is minimised and
+answers the desktop's media keys.
+
+**Prerequisites** (Arch package names; Rust from the distro, not rustup):
+
+```bash
+sudo pacman -S rust rust-wasm trunk webkit2gtk-4.1 opus   # rust-wasm = wasm32 standard library
+cargo install tauri-cli --version '^2' --locked
+```
+
+**Run** (the backend must be running somewhere on the LAN):
+
+```bash
+cd desktop
+cargo tauri dev      # Trunk serves the UI on :1420, Tauri opens the window
+cargo tauri build    # .deb and AppImage under target/release/bundle/
+```
+
+On first start, open **Settings** and enter the server address (e.g. `http://192.168.1.10:5000`);
+saving checks the server's `/health`.
+
+**How it fits together**
+
+```
+desktop/
+  shared/      the server's JSON and the IPC types, compiled into both sides
+  app/         Leptos UI (wasm): pages, now-playing bar; talks only to the core
+  src-tauri/   Tauri core: settings, API client, Tauri commands, the player
+    src/player/  cache (progressive download), decoder (symphonia + libopus), engine (thread + queue), media keys
+```
+
+- **The UI never does HTTP.** Every server call is a Tauri command run by the core with reqwest,
+  so the backend needs no CORS and there's one place for the server address.
+- **Playback**: rodio is only the audio output. Decoding is symphonia 0.6 plus libopus (symphonia
+  has no Opus decoder, and YouTube audio is Opus); rodio's own decoder is on symphonia 0.5, which
+  the libopus adapter can't plug into.
+- **Audio cache**: a track streams into the cache while it plays; the decoder reads the growing file
+  and waits for bytes it reaches early. Finished files replay offline and are evicted least recently
+  played first (2 GB by default, set in Settings).
+- **Media keys**: MPRIS (souvlaki), so KDE's media controls show the current song and work while the
+  window is hidden.
+
+**Tests**: `cargo test --workspace` decodes generated FLAC, MP3, AAC, Vorbis, Opus (Ogg and WebM)
+and WAV files (needs ffmpeg), and covers the progressive reader, the queue, the API client against a
+stub server, and the shared types. `cargo clippy --workspace --all-targets -- -D warnings` is clean.
 
 ## API at a glance
 
