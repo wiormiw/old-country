@@ -110,4 +110,44 @@ public sealed class PlaylistTests
         playlist.Move(from, to).ShouldBeTrue();
         return Order(playlist);
     }
+
+    // --- Syncing from YouTube ---
+
+    private static readonly YouTubeVideoId V1 = new("video000001"), V2 = new("video000002"), V3 = new("video000003");
+    private static readonly HashSet<YouTubeVideoId> Nothing = [];
+
+    [Fact]
+    public void Songs_taken_from_youtube_are_not_offered_again_even_after_being_removed()
+    {
+        var playlist = NewPlaylist();
+        playlist.AppendFromYouTube([(V1, A), (V2, B)], Now).ShouldBeNull();
+        playlist.RemoveAt(0).ShouldBeTrue();
+
+        playlist.NewOnYouTube([V1, V2, V3], present: Nothing).ShouldBe([V3]);
+    }
+
+    [Fact]
+    public void Songs_already_in_the_playlist_are_not_offered_and_new_ones_come_once_in_youtube_order()
+    {
+        var playlist = NewPlaylist();
+        playlist.NewOnYouTube([V3, V1, V3, V2], present: new HashSet<YouTubeVideoId> { V1 }).ShouldBe([V3, V2]);
+    }
+
+    [Fact]
+    public void Marking_songs_taken_stops_them_being_offered()
+    {
+        var playlist = NewPlaylist();
+        playlist.MarkTakenFromYouTube([V2, V2]);
+        playlist.NewOnYouTube([V1, V2], Nothing).ShouldBe([V1]);
+    }
+
+    [Fact]
+    public void A_youtube_list_id_must_be_present_and_short()
+    {
+        var playlist = NewPlaylist();
+        playlist.LinkToYouTube(" ").ShouldNotBeNull();
+        playlist.LinkToYouTube(new string('x', Playlist.YouTubeListIdMaxLength + 1)).ShouldNotBeNull();
+        playlist.LinkToYouTube("PLabc").ShouldBeNull();
+        playlist.YouTubeListId.ShouldBe("PLabc");
+    }
 }

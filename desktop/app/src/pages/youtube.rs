@@ -118,13 +118,20 @@ fn ImportForm() -> impl IntoView {
                 Ok(report) => {
                     error.set(None);
                     playlist.set(String::new());
-                    notice.info(format!(
-                        "Imported \"{}\": {} entries, {} new tracks{}.",
-                        report.name,
-                        report.entries,
-                        report.tracks_created,
-                        if report.skipped > 0 { format!(", {} skipped", report.skipped) } else { String::new() }
-                    ));
+                    let skipped = if report.skipped > 0 { format!(", {} skipped", report.skipped) } else { String::new() };
+                    notice.info(match (report.is_new, report.added) {
+                        (Some(false), Some(0)) => format!("\"{}\" is already up to date with YouTube.", report.name),
+                        (Some(false), Some(added)) => format!(
+                            "Updated \"{}\" from YouTube: {added} new song{} added ({} in total){skipped}.",
+                            report.name,
+                            if added == 1 { "" } else { "s" },
+                            report.entries,
+                        ),
+                        _ => format!(
+                            "Imported \"{}\": {} songs, {} new to the library{skipped}.",
+                            report.name, report.entries, report.tracks_created,
+                        ),
+                    });
                 }
                 Err(e) => error.set(Some(e)),
             }
@@ -137,8 +144,9 @@ fn ImportForm() -> impl IntoView {
             <h2>"Import a playlist"</h2>
             <p class="muted">
                 "Paste a YouTube Music playlist URL or id, or type " <code>"liked"</code>
-                " for your liked songs (needs YouTubeMusic:CookiesFile on the server). It becomes a new library playlist; "
-                "find it under " <A href="/playlists">"Playlists"</A> "."
+                " for your liked songs (needs YouTubeMusic:CookiesFile on the server). It becomes a library playlist under "
+                <A href="/playlists">"Playlists"</A> ". Importing the same playlist again adds the songs added on YouTube "
+                "since; your renames, reordering and removals are kept."
             </p>
             <form class="inline-form" on:submit=import>
                 <input type="text" placeholder="https://music.youtube.com/playlist?list=… or liked" bind:value=playlist aria-label="Playlist to import" />

@@ -175,6 +175,14 @@ pub struct DownloadStatus {
 pub struct ImportReport {
     pub playlist_id: String,
     pub name: String,
+    /// `Some(false)` when the playlist had been imported before and this synced it. `None` from
+    /// servers older than sync, which always created a new playlist.
+    #[serde(default)]
+    pub is_new: Option<bool>,
+    /// Entries this import added (all for a new playlist, only songs new on YouTube for a sync).
+    #[serde(default)]
+    pub added: Option<u32>,
+    /// Entries in the playlist now.
     pub entries: u32,
     pub tracks_created: u32,
     pub tracks_existing: u32,
@@ -263,5 +271,20 @@ mod tests {
         let json = serde_json::to_string(&entry).unwrap();
         assert!(json.contains(r#""duration":"01:06:40""#));
         assert_eq!(serde_json::from_str::<PlaylistEntry>(&json).unwrap(), entry);
+    }
+
+    #[test]
+    fn import_reports_say_whether_they_synced_and_older_servers_still_parse() {
+        let sync: ImportReport = serde_json::from_str(
+            r#"{"playlistId":"p","name":"Mix","isNew":false,"entries":68,"added":3,"tracksCreated":3,"tracksExisting":0,"skipped":0}"#,
+        )
+        .unwrap();
+        assert_eq!((sync.is_new, sync.added, sync.entries), (Some(false), Some(3), 68));
+
+        let older: ImportReport = serde_json::from_str(
+            r#"{"playlistId":"p","name":"Mix","entries":65,"tracksCreated":65,"tracksExisting":0,"skipped":1}"#,
+        )
+        .unwrap();
+        assert_eq!((older.is_new, older.added), (None, None));
     }
 }

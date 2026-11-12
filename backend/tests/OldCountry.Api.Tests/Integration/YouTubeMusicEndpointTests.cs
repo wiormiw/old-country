@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.DependencyInjection;
 using OldCountry.Api.Features.Playlists;
+using OldCountry.Api.Features.YouTubeMusic;
 using OldCountry.Api.Features.Tracks;
 using OldCountry.Api.Features.Tracks.GetTrack;
 using OldCountry.Api.Features.YouTubeMusic.DownloadTracks;
@@ -36,10 +38,89 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
         playlist.Entries.ShouldAllBe(e => !e.IsAvailableOffline);
         playlist.Entries[0].Artist.ShouldBe("Fake Artist");
 
-        // Importing again reuses the tracks instead of duplicating them.
-        var again = (await (await client.PostAsJsonAsync("/api/youtube-music/imports", new { playlist = "PLfakeMix" }, Ct))
-            .Content.ReadFromJsonAsync<ImportPlaylistReport>(Json, Ct)).ShouldNotBeNull();
+        // Importing again syncs the same playlist: nothing new on YouTube, so nothing changes.
+        var againResponse = await client.PostAsJsonAsync("/api/youtube-music/imports", new { playlist = "PLfakeMix" }, Ct);
+        againResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var again = (await againResponse.Content.ReadFromJsonAsync<ImportPlaylistReport>(Json, Ct)).ShouldNotBeNull();
+        again.PlaylistId.ShouldBe(report.PlaylistId);
+        again.IsNew.ShouldBeFalse();
+        again.Added.ShouldBe(0);
+        again.Entries.ShouldBe(3);
         again.TracksCreated.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Importing_again_adds_songs_new_on_youtube_and_keeps_the_library_playlists_edits()
+    {
+        using var client = factory.CreateApiClient();
+        var youTube = (FakeYtDlp)factory.Services.GetRequiredService<IYtDlp>();
+        youTube.Playlists["PLsyncMix"] = new YtPlaylist("Sync Mix", [FakeYtDlp.Song, FakeYtDlp.Other]);
+        var first = await Import(client, "PLsyncMix");
+        first.IsNew.ShouldBeTrue();
+
+        // Edit it here: rename, and remove the first song (which is still on YouTube).
+        (await client.PutAsJsonAsync($"/api/playlists/{first.PlaylistId}", new { name = "My mix", description = "edited" }, Ct))
+            .EnsureSuccessStatusCode();
+        (await client.DeleteAsync($"/api/playlists/{first.PlaylistId}/tracks/0", Ct)).EnsureSuccessStatusCode();
+
+        // Meanwhile a song is added on YouTube.
+        youTube.Playlists["PLsyncMix"] = new YtPlaylist("Sync Mix", [FakeYtDlp.Song, FakeYtDlp.Other, FakeYtDlp.Third]);
+        var sync = await Import(client, "PLsyncMix");
+
+        sync.PlaylistId.ShouldBe(first.PlaylistId);
+        sync.IsNew.ShouldBeFalse();
+        sync.Added.ShouldBe(1);
+        var playlist = (await client.GetFromJsonAsync<PlaylistResponse>($"/api/playlists/{first.PlaylistId}", Json, Ct)).ShouldNotBeNull();
+        playlist.Name.ShouldBe("My mix");
+        playlist.Description.ShouldBe("edited");
+        playlist.Entries.Select(e => e.Title).ShouldBe(["Other Song", "Third Song"], "the removed song stays removed");
+
+        (await Import(client, "PLsyncMix")).Added.ShouldBe(0, "nothing new since the last sync");
+    }
+
+    [Fact]
+    public async Task An_earlier_import_that_was_renamed_is_found_by_its_songs_and_synced()
+    {
+        using var client = factory.CreateApiClient();
+        var youTube = (FakeYtDlp)factory.Services.GetRequiredService<IYtDlp>();
+        YtVideo a = new(new("adoptSong01"), "Adopt A", "Band", TimeSpan.FromSeconds(2), null),
+            b = new(new("adoptSong02"), "Adopt B", "Band", TimeSpan.FromSeconds(2), null),
+            c = new(new("adoptSong03"), "Adopt C", "Band", TimeSpan.FromSeconds(2), null);
+
+        // A playlist like the ones imported before linking: YouTube songs, no link, its own name.
+        youTube.Playlists["PLadoptSeed"] = new YtPlaylist("Seed", [a, b]);
+        var seed = await Import(client, "PLadoptSeed");
+        var trackIds = (await client.GetFromJsonAsync<PlaylistResponse>($"/api/playlists/{seed.PlaylistId}", Json, Ct))
+            .ShouldNotBeNull().Entries.Select(e => e.TrackId).ToArray();
+        var created = await client.PostAsJsonAsync("/api/playlists", new { name = "Renamed long ago", description = "my words" }, Ct);
+        var earlier = (await created.Content.ReadFromJsonAsync<PlaylistSummaryResponse>(Json, Ct)).ShouldNotBeNull();
+        (await client.PostAsJsonAsync($"/api/playlists/{earlier.Id}/tracks", new { trackIds }, Ct)).EnsureSuccessStatusCode();
+
+        youTube.Playlists["PLadopt"] = new YtPlaylist("Adopt Mix", [a, b, c]);
+        var sync = await Import(client, "PLadopt");
+
+        sync.IsNew.ShouldBeFalse();
+        sync.PlaylistId.ShouldBe(earlier.Id);
+        sync.Added.ShouldBe(1);
+        sync.Name.ShouldBe("Renamed long ago");
+        (await Import(client, "PLadopt")).PlaylistId.ShouldBe(earlier.Id, "linked from now on");
+    }
+
+    [Fact]
+    public async Task A_url_and_the_bare_list_id_are_the_same_playlist()
+    {
+        using var client = factory.CreateApiClient();
+        var first = await Import(client, "PLsameList");
+        var again = await Import(client, "https://www.youtube.com/playlist?list=PLsameList&si=shared");
+        again.PlaylistId.ShouldBe(first.PlaylistId);
+        again.IsNew.ShouldBeFalse();
+    }
+
+    private static async Task<ImportPlaylistReport> Import(HttpClient client, string playlist)
+    {
+        var response = await client.PostAsJsonAsync("/api/youtube-music/imports", new { playlist }, Ct);
+        response.IsSuccessStatusCode.ShouldBeTrue(await response.Content.ReadAsStringAsync(Ct));
+        return (await response.Content.ReadFromJsonAsync<ImportPlaylistReport>(Json, Ct)).ShouldNotBeNull();
     }
 
     [Fact]

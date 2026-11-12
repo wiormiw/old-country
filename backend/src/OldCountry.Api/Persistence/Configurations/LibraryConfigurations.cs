@@ -25,6 +25,11 @@ internal sealed class PlaylistConfiguration : IEntityTypeConfiguration<Playlist>
         builder.Property(playlist => playlist.Name).HasMaxLength(Playlist.NameMaxLength);
         builder.Property(playlist => playlist.Description).HasMaxLength(Playlist.DescriptionMaxLength);
 
+        // One library playlist per YouTube playlist: importing it again finds and syncs this one.
+        builder.Property(playlist => playlist.YouTubeListId).HasMaxLength(Playlist.YouTubeListIdMaxLength);
+        builder.HasIndex(playlist => playlist.YouTubeListId).IsUnique();
+        builder.PrimitiveCollection<List<string>>("_youTubeVideosTaken").HasColumnName("you_tube_videos_taken");
+
         // A collection of records stored as one jsonb array on the playlist row: the order is the
         // array order, and a reorder rewrites one column instead of renumbering rows.
         // EF needs an IList, so it maps the private List<PlaylistEntry> field; the domain keeps

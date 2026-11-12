@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using OldCountry.Api.Features.YouTubeMusic;
 using OldCountry.Api.Tests.Features.Tracks;
 using OldCountry.Domain.Library;
@@ -15,8 +16,18 @@ internal sealed class FakeYtDlp : IYtDlp
     public Task<IReadOnlyList<YtVideo>> SearchAsync(string query, int limit, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<YtVideo>>([Song, Other]);
 
-    public Task<YtPlaylist> GetPlaylistAsync(Uri playlistUrl, CancellationToken cancellationToken) =>
-        Task.FromResult(new YtPlaylist("Fake Mix", [Song, Other, Song, NoDuration]));
+    public static readonly YtVideo Third = new(new YouTubeVideoId("fakeSong004"), "Third Song", "Fake Artist", TimeSpan.FromSeconds(2), null);
+
+    /// <summary>What each playlist (by list id) holds "on YouTube" now; tests change it between imports.</summary>
+    public ConcurrentDictionary<string, YtPlaylist> Playlists { get; } = new();
+
+    public Task<YtPlaylist> GetPlaylistAsync(Uri playlistUrl, CancellationToken cancellationToken)
+    {
+        var listId = System.Web.HttpUtility.ParseQueryString(playlistUrl.Query)["list"] ?? "";
+        return Task.FromResult(Playlists.TryGetValue(listId, out var playlist)
+            ? playlist
+            : new YtPlaylist("Fake Mix", [Song, Other, Song, NoDuration]));
+    }
 
     public Task<string> FetchAudioAsync(YouTubeVideoId videoId, string folder, CancellationToken cancellationToken) =>
         Task.FromResult(TestAudio.WriteSilentWav(folder, $"{videoId.Value}.wav"));

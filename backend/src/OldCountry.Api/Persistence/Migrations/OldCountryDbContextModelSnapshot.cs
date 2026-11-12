@@ -17,7 +17,7 @@ partial class OldCountryDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261112071330_AddPlaylists";
+    public override string LastMigrationId => "20261112194135_LinkPlaylistsToYouTube";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -89,6 +89,16 @@ partial class OldCountryDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("timestamp with time zone")
                     .HasColumnName("updated_at");
 
+                b.Property<string>("YouTubeListId")
+                    .HasMaxLength(80)
+                    .HasColumnType("character varying(80)")
+                    .HasColumnName("you_tube_list_id");
+
+                b.PrimitiveCollection<List<string>>("_youTubeVideosTaken")
+                    .IsRequired()
+                    .HasColumnType("text[]")
+                    .HasColumnName("you_tube_videos_taken");
+
                 b.ComplexCollection(typeof(List<Dictionary<string, object>>), "_entries", "OldCountry.Domain.Library.Playlist._entries#PlaylistEntry", b1 =>
                     {
                         b1.IsRequired();
@@ -106,6 +116,10 @@ partial class OldCountryDbContextModelSnapshot : ModelSnapshot
 
                 b.HasKey("Id")
                     .HasName("pk_playlists");
+
+                b.HasIndex("YouTubeListId")
+                    .IsUnique()
+                    .HasDatabaseName("ix_playlists_you_tube_list_id");
 
                 b.ToTable("playlists");
             });

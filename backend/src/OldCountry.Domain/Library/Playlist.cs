@@ -15,6 +15,7 @@ public sealed class Playlist : AuditableEntity<PlaylistId>
     public const int NameMaxLength = 200;
     public const int DescriptionMaxLength = 2000;
     public const int MaxEntries = 10_000;
+    public const int YouTubeListIdMaxLength = 80;
 
     private readonly List<PlaylistEntry> _entries = [];
 
@@ -25,6 +26,19 @@ public sealed class Playlist : AuditableEntity<PlaylistId>
     public string? Description { get; private set; }
 
     public IReadOnlyList<PlaylistEntry> Entries => _entries;
+
+    /// <summary>
+    /// The YouTube Music playlist this one was imported from (its list id, e.g. <c>PL…</c>, or
+    /// <c>LM</c> for liked songs), or <c>null</c> for a playlist made here. Importing that
+    /// playlist again updates this one instead of making another.
+    /// </summary>
+    public string? YouTubeListId { get; private set; }
+
+    /// <summary>
+    /// Every video this playlist has taken from its YouTube playlist. A sync adds only videos not
+    /// in here, so a song removed from this playlist stays removed even while it's still on YouTube.
+    /// </summary>
+    private readonly List<string> _youTubeVideosTaken = [];
 
     public static Validated<Playlist> Create(string name, string? description) =>
         Check(name, description) switch
@@ -67,6 +81,43 @@ public sealed class Playlist : AuditableEntity<PlaylistId>
         _entries.RemoveAt(from);
         _entries.Insert(to, entry);
         return true;
+    }
+
+    /// <summary>Remembers which YouTube playlist this one comes from, so importing it again syncs it.</summary>
+    public ValidationError? LinkToYouTube(string listId)
+    {
+        if (string.IsNullOrWhiteSpace(listId) || listId.Length > YouTubeListIdMaxLength)
+            return ValidationError.For("youTubeListId", $"Must be 1-{YouTubeListIdMaxLength} characters.");
+        YouTubeListId = listId;
+        return null;
+    }
+
+    /// <summary>
+    /// The videos of a YouTube playlist (in YouTube's order) that a sync would add: ones this
+    /// playlist hasn't taken before and doesn't already hold (<paramref name="present"/>), each once.
+    /// </summary>
+    public IReadOnlyList<YouTubeVideoId> NewOnYouTube(IEnumerable<YouTubeVideoId> source, IReadOnlySet<YouTubeVideoId> present)
+    {
+        var taken = _youTubeVideosTaken.ToHashSet(StringComparer.Ordinal);
+        return [.. source.Distinct().Where(video => !taken.Contains(video.Value) && !present.Contains(video))];
+    }
+
+    /// <summary>Records videos as taken from YouTube without adding them (they're already here).</summary>
+    public void MarkTakenFromYouTube(IEnumerable<YouTubeVideoId> videos)
+    {
+        var taken = _youTubeVideosTaken.ToHashSet(StringComparer.Ordinal);
+        foreach (var video in videos)
+        {
+            if (taken.Add(video.Value)) _youTubeVideosTaken.Add(video.Value);
+        }
+    }
+
+    /// <summary>Appends songs from its YouTube playlist and records them as taken, or refuses all if they don't fit.</summary>
+    public ValidationError? AppendFromYouTube(IReadOnlyList<(YouTubeVideoId Video, TrackId Track)> songs, DateTimeOffset addedAt)
+    {
+        if (Append([.. songs.Select(song => song.Track)], addedAt) is { } error) return error;
+        MarkTakenFromYouTube(songs.Select(song => song.Video));
+        return null;
     }
 
     private bool HasPosition(int position) => position >= 0 && position < _entries.Count;

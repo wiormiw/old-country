@@ -4,7 +4,7 @@ A personal music player: your offline library plus YouTube Music, in one place.
 
 - **Library**: scans your music folders (FLAC, MP3, AAC/ALAC, Opus, Vorbis, WAV), reads tags, and streams files with seeking.
 - **Playlists**: ordered, editable, duplicates allowed.
-- **YouTube Music**: search, play, download for offline, and import playlists or your liked songs.
+- **YouTube Music**: search, play, download for offline, and import playlists or your liked songs. Importing a playlist again syncs it: songs added on YouTube since are appended, and your renames, reordering and removals are kept.
 
 | Part | Stack | Status |
 |---|---|---|
