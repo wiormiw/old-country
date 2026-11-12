@@ -135,6 +135,12 @@ cargo tauri dev      # Trunk serves the UI on :1420, Tauri opens the window
 cargo tauri build    # .deb and AppImage under target/release/bundle/
 ```
 
+**Install for everyday use** (release build, launcher entry and icon, for the current user):
+
+```bash
+packaging/install-linux.sh              # again after pulling changes; --uninstall removes it
+```
+
 On first start, open **Settings** and enter the server address (e.g. `http://192.168.1.10:5000`);
 saving checks the server's `/health`.
 
