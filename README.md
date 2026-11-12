@@ -64,7 +64,9 @@ cd backend
 ```
 
 It starts the AppHost's Postgres container, reads the password and music folder from the AppHost's
-user secrets, and runs the API on `http://localhost:5000`. There's no dashboard in this mode.
+user secrets, starts Aspire's standalone dashboard on `http://localhost:18888` (no sign-in, local
+only; `--no-dashboard` skips it), and runs the API on `http://localhost:5000` (`API_PORT=...` to change).
+Ctrl+C stops the API and the dashboard.
 
 Migrations run on startup in Development. The API's OpenAPI document is at `/openapi/v1.json` and an interactive UI at `/scalar`. `src/OldCountry.Api/OldCountry.Api.http` has a ready-made request for every endpoint.
 

@@ -3,9 +3,11 @@
 # playlists are all there). It:
 #   1. starts the Postgres container the AppHost created (persistent, localhost:55432),
 #   2. reads the Postgres password and MusicFolder from the AppHost's user secrets,
-#   3. runs the API on http://localhost:5000 in Development (Scalar UI at /scalar, logs in this terminal).
-# Run the AppHost once before this, so the container and secrets exist. Ctrl+C stops the API; the
-# database keeps running (docker stop it, or leave it for next time).
+#   3. starts Aspire's standalone dashboard on http://localhost:18888 (skip with --no-dashboard),
+#   4. runs the API on http://localhost:5000 (API_PORT to change) in Development, with the Scalar UI
+#      at /scalar and logs in this terminal and the dashboard.
+# Run the AppHost once before this, so the container and secrets exist. Ctrl+C stops the API and the
+# dashboard; the database keeps running (docker stop it, or leave it for next time).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -40,5 +42,24 @@ if [ -n "$music" ]; then
   echo "Music folder: $music"
 fi
 
-echo "API: http://localhost:5000  (Scalar: http://localhost:5000/scalar)"
-exec dotnet run --project src/OldCountry.Api --launch-profile http
+port="${API_PORT:-5000}"
+
+# Aspire's dashboard on its own (no AppHost needed): logs, traces and metrics at localhost:18888.
+# It keeps telemetry in memory only, and is stopped when this script ends. --no-dashboard skips it.
+dashboard=""
+if [ "${1:-}" != "--no-dashboard" ]; then
+  dashboard="old-country-dashboard"
+  docker rm -f "$dashboard" >/dev/null 2>&1 || true
+  # Both ports listen on 127.0.0.1 only, so leaving the dashboard unsecured is fine on this machine.
+  docker run -d --rm --name "$dashboard" \
+    -p 127.0.0.1:18888:18888 -p 127.0.0.1:18889:18889 \
+    -e DASHBOARD__FRONTEND__AUTHMODE=Unsecured -e DASHBOARD__OTLP__AUTHMODE=Unsecured \
+    mcr.microsoft.com/dotnet/aspire-dashboard:13.6 >/dev/null
+  trap 'docker stop "$dashboard" >/dev/null 2>&1 || true' EXIT
+  export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:18889" OTEL_SERVICE_NAME="api"
+  echo "Dashboard: http://localhost:18888"
+fi
+
+echo "API: http://localhost:$port  (Scalar: http://localhost:$port/scalar)"
+# --urls after "--" goes to the API and wins over the launch profile's address.
+dotnet run --project src/OldCountry.Api --launch-profile http -- --urls "http://localhost:$port"
