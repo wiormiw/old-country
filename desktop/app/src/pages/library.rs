@@ -30,10 +30,11 @@ pub fn Library() -> impl IntoView {
                     view! {
                         <TrackTable tracks=paged.items />
                         <nav class="pager" aria-label="Pages">
-                            <button class="ghost" prop:disabled=move || page.get() <= 1
+                            <button class="ghost" prop:disabled=move || { page.get() <= 1 }
                                 on:click=move |_| page.update(|p| *p -= 1)>"← Previous"</button>
                             <span class="muted">{move || format!("Page {} of {total_pages} · {} tracks", page.get(), paged.total_count)}</span>
-                            <button class="ghost" prop:disabled=move || page.get() >= total_pages
+                            // Braces matter: a bare `>=` in an attribute would end the tag in view!.
+                            <button class="ghost" prop:disabled=move || { page.get() >= total_pages }
                                 on:click=move |_| page.update(|p| *p += 1)>"Next →"</button>
                         </nav>
                     }.into_any()

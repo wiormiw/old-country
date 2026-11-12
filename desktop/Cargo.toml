@@ -24,4 +24,6 @@ all = { level = "warn", priority = -1 }
 [profile.release]
 lto = true
 codegen-units = 1
-strip = true
+# Not `true`: full stripping removes the wasm target_features section, and wasm-opt then rejects
+# the UI's bulk-memory instructions. Debug info is still dropped.
+strip = "debuginfo"

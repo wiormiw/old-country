@@ -43,7 +43,7 @@ fn check(extension: &str, codec_args: &[&str]) {
     let landed = decoder.seek(1.5).unwrap_or_else(|e| panic!("{extension} seek: {e}"));
     assert!((0.0..=1.6).contains(&landed), "{extension}: seek landed at {landed}");
 
-    let source = DecodedSource::new(decoder);
+    let source = DecodedSource::blocking(decoder);
     assert_eq!(source.channels().get(), 2, "{extension}: channels");
     assert_eq!(source.sample_rate().get(), 48_000, "{extension}: rate");
     let samples = source.count();

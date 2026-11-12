@@ -89,6 +89,21 @@ impl PlayerHandle {
     }
 }
 
+/// Output buffer in frames (~85 ms at 48 kHz). rodio's default (~43 ms) underruns when the
+/// desktop is busy; music playback doesn't need low latency, it needs no crackles.
+const OUTPUT_BUFFER_FRAMES: u32 = 4_096;
+
+/// The default device with a roomier buffer, falling back to rodio's own choice of device and
+/// settings if that's refused.
+fn open_output() -> Result<rodio::MixerDeviceSink, rodio::DeviceSinkError> {
+    rodio::DeviceSinkBuilder::from_default_device()
+        .and_then(|builder| builder.with_buffer_size(rodio::cpal::BufferSize::Fixed(OUTPUT_BUFFER_FRAMES)).open_stream())
+        .or_else(|error| {
+            log::warn!("couldn't open audio with a {OUTPUT_BUFFER_FRAMES}-frame buffer ({error}); using defaults");
+            rodio::DeviceSinkBuilder::open_default_sink()
+        })
+}
+
 struct Engine {
     inbox: mpsc::Receiver<Command>,
     outbox: Sender<Command>,
@@ -109,7 +124,7 @@ impl Engine {
     fn run(mut self, emit: impl Fn(&PlayerState)) {
         // The device sink must outlive the player; if there's no audio device, keep the queue
         // working and say why nothing plays.
-        let sink = rodio::DeviceSinkBuilder::open_default_sink();
+        let sink = open_output();
         let output = match &sink {
             Ok(sink) => {
                 let player = rodio::Player::connect_new(sink.mixer());
