@@ -175,7 +175,7 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
             view! {
                 <input type="search" class="search" placeholder="Find in this playlist" aria-label="Find in this playlist" bind:value=filter />
                 <table class="tracks">
-                    <thead><tr><th class="col-num">"#"</th><th>"Title"</th><th>"Artist"</th><th class="col-time">"Time"</th><th class="col-actions"></th></tr></thead>
+                    <thead><tr><th class="col-num">"#"</th><th>"Title"</th><th class="col-artist">"Artist"</th><th class="col-time">"Time"</th><th class="col-actions"></th></tr></thead>
                     <tbody>
                         {playlist.entries.into_iter().enumerate().map(|(i, entry)| {
                             let position = entry.position;
@@ -189,8 +189,11 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
                                         <button class="icon row-play" aria-label="Play"
                                             on:click=move |_| leptos::task::spawn_local(ipc::play(queue.clone(), i))>"▶"</button>
                                     </td>
-                                    <td><A href=format!("/tracks/{}", entry.track_id) attr:class="title-link">{entry.title.clone()}</A></td>
-                                    <td class="muted">{entry.artist.clone()}</td>
+                                    <td class="col-title">
+                                        <A href=format!("/tracks/{}", entry.track_id) attr:class="title-link">{entry.title.clone()}</A>
+                                        <span class="sub-artist">{entry.artist.clone()}</span>
+                                    </td>
+                                    <td class="muted col-artist">{entry.artist.clone()}</td>
                                     <td class="col-time">{display(entry.duration)}</td>
                                     <td class="col-actions">
                                         // Moving only makes sense in the whole list, not a filtered one.

@@ -77,7 +77,7 @@ fn TrackTable(tracks: Vec<Track>) -> impl IntoView {
     view! {
         <table class="tracks">
             <thead>
-                <tr><th class="col-num">"#"</th><th>"Title"</th><th>"Artist"</th><th class="col-time">"Time"</th><th>"Source"</th><th class="col-actions"></th></tr>
+                <tr><th class="col-num">"#"</th><th>"Title"</th><th class="col-artist">"Artist"</th><th class="col-time">"Time"</th><th class="col-source">"Source"</th><th class="col-actions"></th></tr>
             </thead>
             <tbody>
                 {tracks.into_iter().enumerate().map(|(i, track)| {
@@ -96,10 +96,13 @@ fn TrackTable(tracks: Vec<Track>) -> impl IntoView {
                                 <button class="icon row-play" aria-label="Play"
                                     on:click=move |_| leptos::task::spawn_local(ipc::play(queue.clone(), i))>"▶"</button>
                             </td>
-                            <td><A href=format!("/tracks/{}", track.id) attr:class="title-link">{track.title.clone()}</A></td>
-                            <td class="muted">{track.artist.clone()}</td>
+                            <td class="col-title">
+                                <A href=format!("/tracks/{}", track.id) attr:class="title-link">{track.title.clone()}</A>
+                                <span class="sub-artist">{track.artist.clone()}</span>
+                            </td>
+                            <td class="muted col-artist">{track.artist.clone()}</td>
                             <td class="col-time">{display(track.duration)}</td>
-                            <td><span class="badge" class:badge-offline=track.is_available_offline>{source}</span></td>
+                            <td class="col-source"><span class="badge" class:badge-offline=track.is_available_offline>{source}</span></td>
                             <td class="col-actions">
                                 <button class="ghost small" on:click=move |_| open_picker(vec![id.clone()])>"+ Playlist"</button>
                             </td>

@@ -16,8 +16,8 @@
         "title": "old-country",
         "width": 1240,
         "height": 800,
-        "minWidth": 960,
-        "minHeight": 620
+        "minWidth": 400,
+        "minHeight": 520
       }
     ],
     "security": {
