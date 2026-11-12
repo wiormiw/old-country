@@ -75,7 +75,7 @@ pub fn Library() -> impl IntoView {
 fn TrackTable(tracks: Vec<Track>) -> impl IntoView {
     let queue: Vec<_> = tracks.iter().map(track_item).collect();
     view! {
-        <table class="tracks">
+        <table class="tracks appear">
             <thead>
                 <tr><th class="col-num">"#"</th><th>"Title"</th><th class="col-artist">"Artist"</th><th class="col-time">"Time"</th><th class="col-source">"Source"</th><th class="col-actions"></th></tr>
             </thead>
@@ -168,6 +168,7 @@ fn ScanControl(on_finished: impl Fn() + Copy + 'static) -> impl IntoView {
                 _ => String::new(),
             }}</span>
             <button class="primary" on:click=scan
+                aria-busy=move || status.with(|s| s.as_ref().is_some_and(|s| s.is_running || s.is_queued)).to_string()
                 prop:disabled=move || status.with(|s| s.as_ref().is_some_and(|s| s.is_running || s.is_queued))>
                 "Scan library"
             </button>

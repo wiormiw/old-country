@@ -12,6 +12,8 @@ pub fn SettingsPage() -> impl IntoView {
     let loaded = RwSignal::new(None::<Settings>);
     let error = RwSignal::new(None::<AppError>);
     let checking = RwSignal::new(false);
+    // Which button started the check, so only that one shows the spinner.
+    let saving = RwSignal::new(false);
 
     let logs = RwSignal::new(String::new());
     leptos::task::spawn_local(async move {
@@ -47,6 +49,7 @@ pub fn SettingsPage() -> impl IntoView {
         settings.server_url = server.get_untracked();
         settings.cache_max_megabytes = cache_mb.get_untracked().trim().parse().unwrap_or(settings.cache_max_megabytes);
         checking.set(true);
+        saving.set(true);
         leptos::task::spawn_local(async move {
             match ipc::save_settings(settings).await {
                 Ok(saved) => {
@@ -59,6 +62,7 @@ pub fn SettingsPage() -> impl IntoView {
                 Err(e) => error.set(Some(e)),
             }
             checking.set(false);
+            saving.set(false);
         });
     };
 
@@ -78,10 +82,12 @@ pub fn SettingsPage() -> impl IntoView {
                 </label>
                 {move || error.get().map(|e| view! { <p class="field-error" role="alert">{e.message}</p> })}
                 <div class="actions">
-                    <button class="primary" type="submit" prop:disabled=move || checking.get() || loaded.with(Option::is_none)>
-                        {move || if checking.get() { "Checking…" } else { "Save" }}
+                    <button class="primary" type="submit" aria-busy=move || saving.get().to_string()
+                        prop:disabled=move || checking.get() || loaded.with(Option::is_none)>
+                        {move || if saving.get() { "Checking…" } else { "Save" }}
                     </button>
-                    <button class="ghost" type="button" on:click=check prop:disabled=move || checking.get()>"Test connection"</button>
+                    <button class="ghost" type="button" on:click=check aria-busy=move || (checking.get() && !saving.get()).to_string()
+                        prop:disabled=move || checking.get()>"Test connection"</button>
                 </div>
             </form>
 

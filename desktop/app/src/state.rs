@@ -9,6 +9,10 @@ use crate::ipc;
 #[derive(Clone, Copy)]
 pub struct Player(pub RwSignal<PlayerState>);
 
+/// How many server requests are running; the progress bar shows while it's above zero.
+#[derive(Clone, Copy)]
+pub struct Requests(pub RwSignal<u32>);
+
 /// A short message shown at the bottom of the screen (errors, confirmations).
 #[derive(Clone, Copy)]
 pub struct Notice(pub RwSignal<Option<(bool, String)>>);
@@ -27,6 +31,9 @@ pub fn provide_app_state() {
     let player = RwSignal::new(PlayerState::default());
     provide_context(Player(player));
     provide_context(Notice(RwSignal::new(None)));
+    let requests = RwSignal::new(0);
+    ipc::track_requests(requests);
+    provide_context(Requests(requests));
 
     ipc::on_player_state(move |state| player.set(state));
     leptos::task::spawn_local(async move {
@@ -38,6 +45,10 @@ pub fn provide_app_state() {
 
 pub fn use_player() -> Player {
     expect_context::<Player>()
+}
+
+pub fn use_requests() -> Requests {
+    expect_context::<Requests>()
 }
 
 pub fn use_notice() -> Notice {

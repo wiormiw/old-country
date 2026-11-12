@@ -18,8 +18,42 @@ extern "C" {
     async fn listen(event: &str, handler: &Closure<dyn FnMut(JsValue)>) -> JsValue;
 }
 
+thread_local! {
+    /// How many server requests are running, for the progress bar. Set up by `track_requests`.
+    static IN_FLIGHT: std::cell::Cell<Option<leptos::prelude::RwSignal<u32>>> = const { std::cell::Cell::new(None) };
+}
+
+/// Counts server requests in `counter` from now on (the app shows a progress bar while it's > 0).
+pub fn track_requests(counter: leptos::prelude::RwSignal<u32>) {
+    IN_FLIGHT.with(|cell| cell.set(Some(counter)));
+}
+
+/// Counts one request for as long as it lives, so early returns and errors are counted down too.
+struct InFlight(Option<leptos::prelude::RwSignal<u32>>);
+
+impl InFlight {
+    fn start(command: &str) -> Self {
+        // Player controls and local settings never wait on the server; leave them out.
+        let local = command.starts_with("player_") || matches!(command, "get_settings" | "logs_folder" | "open_logs_folder");
+        let counter = if local { None } else { IN_FLIGHT.with(std::cell::Cell::get) };
+        if let Some(counter) = counter {
+            leptos::prelude::Update::update(&counter, |n| *n += 1);
+        }
+        Self(counter)
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        if let Some(counter) = self.0 {
+            leptos::prelude::Update::try_update(&counter, |n| *n = n.saturating_sub(1));
+        }
+    }
+}
+
 /// Invokes `command` with `args` (a struct whose camelCase fields match the command's parameters).
 async fn call<T: DeserializeOwned>(command: &str, args: impl Serialize) -> Result<T, AppError> {
+    let _in_flight = InFlight::start(command);
     let args = args
         .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|e| AppError::new("ui.bad_request", e.to_string()))?;

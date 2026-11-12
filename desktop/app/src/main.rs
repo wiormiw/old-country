@@ -8,6 +8,7 @@ mod state;
 
 use leptos::prelude::*;
 use leptos_router::components::{Route, Router, Routes};
+use leptos_router::hooks::use_location;
 use leptos_router::path;
 
 fn main() {
@@ -19,12 +20,15 @@ fn main() {
 fn App() -> impl IntoView {
     state::provide_app_state();
     components::provide_picker();
+    let content = NodeRef::<leptos::html::Main>::new();
 
     view! {
         <Router>
+            <components::RequestBar />
             <div class="shell">
                 <components::Sidebar />
-                <main class="content">
+                <ScrollToTopOnNavigate content />
+                <main class="content" node_ref=content>
                     <Routes fallback=|| view! { <p class="muted">"Page not found."</p> }>
                         <Route path=path!("/") view=pages::library::Library />
                         <Route path=path!("/tracks/:id") view=pages::track::TrackPage />
@@ -41,4 +45,16 @@ fn App() -> impl IntoView {
             <components::NoticeBar />
         </Router>
     }
+}
+
+/// A new page starts at its top, not wherever the previous page was scrolled to.
+#[component]
+fn ScrollToTopOnNavigate(content: NodeRef<leptos::html::Main>) -> impl IntoView {
+    let location = use_location();
+    Effect::new(move |_| {
+        location.pathname.track();
+        if let Some(main) = content.get_untracked() {
+            main.set_scroll_top(0);
+        }
+    });
 }

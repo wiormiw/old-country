@@ -3,7 +3,7 @@ use leptos_router::components::A;
 use shared::timespan::display;
 use shared::{AppError, YouTubeResult};
 
-use crate::components::ErrorView;
+use crate::components::{ErrorView, Loading};
 use crate::ipc;
 use crate::state::{use_notice, youtube_item};
 
@@ -33,21 +33,32 @@ pub fn YouTube() -> impl IntoView {
             <header class="page-head"><h1>"YouTube Music"</h1></header>
             <form class="inline-form" on:submit=search>
                 <input type="search" placeholder="Search songs, artists…" bind:value=query aria-label="Search YouTube" />
-                <button class="primary" type="submit" prop:disabled=move || searching.get()>
+                <button class="primary" type="submit" aria-busy=move || searching.get().to_string()
+                    prop:disabled=move || searching.get()>
                     {move || if searching.get() { "Searching…" } else { "Search" }}
                 </button>
             </form>
 
             {move || match results.get() {
+                None if searching.get() => view! { <Loading /> }.into_any(),
                 None => ().into_any(),
                 Some(Err(error)) => view! { <ErrorView error /> }.into_any(),
                 Some(Ok(list)) if list.is_empty() => view! { <p class="muted">"No results."</p> }.into_any(),
-                Some(Ok(list)) => view! { <Results list /> }.into_any(),
+                // Earlier results stay, dimmed, while a new search runs.
+                Some(Ok(list)) => view! { <div class="results-wrap" class:stale=move || searching.get()><Results list /></div> }.into_any(),
             }}
 
             <ImportForm />
         </section>
     }
+}
+
+/// A result's download button: not asked yet, asking the server, or queued there.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Download {
+    Idle,
+    Sending,
+    Queued,
 }
 
 #[component]
@@ -56,12 +67,13 @@ fn Results(list: Vec<YouTubeResult>) -> impl IntoView {
     let queue: Vec<_> = list.iter().map(youtube_item).collect();
 
     view! {
-        <ul class="results">
+        <ul class="results appear">
             {list.into_iter().enumerate().map(|(i, result)| {
                 let item = queue[i].clone();
                 let queue = queue.clone();
                 let video_id = result.video_id.clone();
                 let downloaded = result.is_available_offline;
+                let download = RwSignal::new(Download::Idle);
                 view! {
                     <li class="result">
                         {result.thumbnail_url.clone().map(|src| view! { <img class="thumb" src=src alt="" loading="lazy" /> })}
@@ -85,15 +97,30 @@ fn Results(list: Vec<YouTubeResult>) -> impl IntoView {
                                     notice.info("Added to the queue.");
                                 });
                             }>"+ Queue"</button>
-                            <button class="ghost small" prop:disabled=downloaded on:click=move |_| {
-                                let video_id = video_id.clone();
-                                leptos::task::spawn_local(async move {
-                                    match ipc::youtube_download(vec![video_id]).await {
-                                        Ok(_) => notice.info("Download queued. See Downloads for progress."),
-                                        Err(e) => notice.error(e.message),
-                                    }
-                                });
-                            }>{if downloaded { "Downloaded" } else { "⤓ Download" }}</button>
+                            <button class="ghost small" aria-busy=move || (download.get() == Download::Sending).to_string()
+                                prop:disabled=move || downloaded || download.get() != Download::Idle
+                                on:click=move |_| {
+                                    let video_id = video_id.clone();
+                                    download.set(Download::Sending);
+                                    leptos::task::spawn_local(async move {
+                                        match ipc::youtube_download(vec![video_id]).await {
+                                            Ok(_) => {
+                                                download.set(Download::Queued);
+                                                notice.info("Download queued. See Downloads for progress.");
+                                            }
+                                            Err(e) => {
+                                                download.set(Download::Idle);
+                                                notice.error(e.message);
+                                            }
+                                        }
+                                    });
+                                }>
+                                {move || match (downloaded, download.get()) {
+                                    (true, _) => "Downloaded",
+                                    (_, Download::Queued) => "Queued ✓",
+                                    _ => "⤓ Download",
+                                }}
+                            </button>
                         </div>
                     </li>
                 }
@@ -150,7 +177,7 @@ fn ImportForm() -> impl IntoView {
             </p>
             <form class="inline-form" on:submit=import>
                 <input type="text" placeholder="https://music.youtube.com/playlist?list=… or liked" bind:value=playlist aria-label="Playlist to import" />
-                <button class="primary" type="submit" prop:disabled=move || busy.get()>
+                <button class="primary" type="submit" aria-busy=move || busy.get().to_string() prop:disabled=move || busy.get()>
                     {move || if busy.get() { "Importing…" } else { "Import" }}
                 </button>
             </form>

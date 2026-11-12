@@ -40,7 +40,20 @@ pub fn ErrorView(error: AppError) -> impl IntoView {
 
 #[component]
 pub fn Loading() -> impl IntoView {
-    view! { <p class="muted">"Loading…"</p> }
+    // Placeholder rows shaped like the content to come, shimmering until it arrives.
+    const WIDTHS: [u8; 6] = [92, 74, 86, 63, 80, 70];
+    view! {
+        <div class="skeleton" role="status" aria-label="Loading">
+            {WIDTHS.iter().map(|w| view! { <div class="skeleton-row" style=format!("--w: {w}%")></div> }).collect_view()}
+        </div>
+    }
+}
+
+/// A thin bar across the top of the window while the server is working on something.
+#[component]
+pub fn RequestBar() -> impl IntoView {
+    let requests = crate::state::use_requests().0;
+    view! { <div class="request-bar" class:active=move || { requests.get() > 0 } aria-hidden="true"></div> }
 }
 
 #[component]
@@ -65,6 +78,8 @@ pub fn NoticeBar() -> impl IntoView {
 }
 
 const SEEK_STEP_SECONDS: f64 = 5.0;
+/// Matches the drawer's slide-out animation in app.css.
+const DRAWER_CLOSE_MS: u64 = 180;
 const VOLUME_STEP: f32 = 0.05;
 /// Pixels of wheel movement per step. A mouse notch moves at least this far, so each notch is one
 /// step; a touchpad's many small movements add up to a step every this many pixels.
@@ -101,6 +116,20 @@ fn wheel_steps(pending: StoredValue<f64>, ev: &leptos::ev::WheelEvent) -> Option
 pub fn NowPlaying() -> impl IntoView {
     let player = use_player().0;
     let show_queue = RwSignal::new(false);
+    let closing_queue = RwSignal::new(false);
+    let close_queue = move || {
+        if !show_queue.get_untracked() || closing_queue.get_untracked() {
+            return;
+        }
+        closing_queue.set(true);
+        set_timeout(
+            move || {
+                show_queue.set(false);
+                closing_queue.set(false);
+            },
+            std::time::Duration::from_millis(DRAWER_CLOSE_MS),
+        );
+    };
     // While a slider is dragged, show the dragged value instead of the pushed state.
     let seeking = RwSignal::new(None::<f64>);
     let volume_drag = RwSignal::new(None::<f32>);
@@ -132,8 +161,10 @@ pub fn NowPlaying() -> impl IntoView {
             <div class="np-track">
                 {move || match current.get() {
                     Some(item) => view! {
-                        <div class="np-title">{item.title}</div>
-                        <div class="np-artist">{item.artist}</div>
+                        <div class="np-now">
+                            <div class="np-title">{item.title}</div>
+                            <div class="np-artist">{item.artist}</div>
+                        </div>
                     }.into_any(),
                     None => view! { <div class="np-title muted">"Nothing playing"</div> }.into_any(),
                 }}
@@ -150,8 +181,11 @@ pub fn NowPlaying() -> impl IntoView {
                             leptos::task::spawn_local(ipc::set_shuffle(on));
                         }>"⇄"</button>
                     <button class="icon" aria-label="Previous" on:click=move |_| leptos::task::spawn_local(ipc::prev())>"⏮"</button>
-                    <button class="icon play" aria-label="Play or pause" on:click=move |_| leptos::task::spawn_local(ipc::toggle())>
-                        {move || if player.with(|s| s.buffering) { "…" } else if player.with(|s| s.playing) { "⏸" } else { "▶" }}
+                    <button class="icon play" aria-label="Play or pause"
+                        class:buffering=move || player.with(|s| s.buffering)
+                        aria-busy=move || player.with(|s| s.buffering).to_string()
+                        on:click=move |_| leptos::task::spawn_local(ipc::toggle())>
+                        {move || if player.with(|s| s.playing || s.buffering) { "⏸" } else { "▶" }}
                     </button>
                     <button class="icon" aria-label="Next" on:click=move |_| leptos::task::spawn_local(ipc::next())>"⏭"</button>
                     <button class="icon toggle" aria-label="Repeat"
@@ -216,22 +250,29 @@ pub fn NowPlaying() -> impl IntoView {
                         volume_drag.set(None);
                     }
                 />
-                <button class="ghost" on:click=move |_| show_queue.update(|s| *s = !*s)>
+                <button class="ghost" class:active=move || show_queue.get() && !closing_queue.get()
+                    on:click=move |_| if show_queue.get_untracked() { close_queue() } else { show_queue.set(true) }>
                     {move || format!("Queue ({})", player.with(|s| s.queue.len()))}
                 </button>
             </div>
         </footer>
         <Show when=move || show_queue.get()>
-            <QueueDrawer on_close=move || show_queue.set(false) />
+            <QueueDrawer closing=closing_queue on_close=close_queue />
         </Show>
     }
 }
 
 #[component]
-fn QueueDrawer(on_close: impl Fn() + 'static + Copy) -> impl IntoView {
+fn QueueDrawer(closing: RwSignal<bool>, on_close: impl Fn() + 'static + Copy) -> impl IntoView {
+    // Open at the song playing now, not at the top of a long queue.
+    request_animation_frame(|| {
+        if let Ok(Some(current)) = document().query_selector(".queue li.current") {
+            current.scroll_into_view_with_bool(false);
+        }
+    });
     let player = use_player().0;
     view! {
-        <aside class="drawer" aria-label="Play queue">
+        <aside class="drawer" class:closing=move || closing.get() aria-label="Play queue">
             <header class="drawer-head">
                 <h2>"Queue"</h2>
                 <button class="icon" aria-label="Close" on:click=move |_| on_close()>"✕"</button>

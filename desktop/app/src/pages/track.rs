@@ -57,14 +57,23 @@ fn TrackView(detail: TrackDetail) -> impl IntoView {
         let id = track.id.clone();
         move |_| open_picker(vec![id.clone()])
     };
+    // None: not asked; Some(false): asking the server; Some(true): queued there.
+    let queued = RwSignal::new(None::<bool>);
     let download = {
         let video_id = track.you_tube_video_id.clone();
         move |_| {
             let Some(video_id) = video_id.clone() else { return };
+            queued.set(Some(false));
             leptos::task::spawn_local(async move {
                 match ipc::youtube_download(vec![video_id]).await {
-                    Ok(_) => notice.info("Download queued. See Downloads for progress."),
-                    Err(e) => notice.error(e.message),
+                    Ok(_) => {
+                        queued.set(Some(true));
+                        notice.info("Download queued. See Downloads for progress.");
+                    }
+                    Err(e) => {
+                        queued.set(None);
+                        notice.error(e.message);
+                    }
                 }
             });
         }
@@ -88,7 +97,13 @@ fn TrackView(detail: TrackDetail) -> impl IntoView {
                 <button class="primary" on:click=play>"▶ Play"</button>
                 <button class="ghost" on:click=enqueue>"+ Queue"</button>
                 <button class="ghost" on:click=add_to_playlist>"+ Playlist"</button>
-                {youtube_only.then(|| view! { <button class="ghost" on:click=download>"⤓ Download"</button> })}
+                {youtube_only.then(|| view! {
+                    <button class="ghost" on:click=download
+                        aria-busy=move || (queued.get() == Some(false)).to_string()
+                        prop:disabled=move || queued.get().is_some()>
+                        {move || if queued.get() == Some(true) { "Queued ✓" } else { "⤓ Download" }}
+                    </button>
+                })}
             </div>
         </header>
 

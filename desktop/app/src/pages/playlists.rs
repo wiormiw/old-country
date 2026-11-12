@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map};
@@ -13,10 +15,12 @@ pub fn Playlists() -> impl IntoView {
     let playlists = LocalResource::new(ipc::list_playlists);
     let name = RwSignal::new(String::new());
     let error = RwSignal::new(None::<AppError>);
+    let creating = RwSignal::new(false);
 
     let create = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         let value = name.get_untracked();
+        creating.set(true);
         leptos::task::spawn_local(async move {
             match ipc::create_playlist(value, None).await {
                 Ok(_) => {
@@ -26,6 +30,7 @@ pub fn Playlists() -> impl IntoView {
                 }
                 Err(e) => error.set(Some(e)),
             }
+            creating.set(false);
         });
     };
 
@@ -34,7 +39,8 @@ pub fn Playlists() -> impl IntoView {
             <header class="page-head"><h1>"Playlists"</h1></header>
             <form class="inline-form" on:submit=create>
                 <input type="text" placeholder="New playlist name" bind:value=name aria-label="New playlist name" />
-                <button class="primary" type="submit">"Create"</button>
+                <button class="primary" type="submit" aria-busy=move || creating.get().to_string()
+                    prop:disabled=move || creating.get()>"Create"</button>
             </form>
             {move || error.get().map(|e| view! { <p class="field-error">{e.message}</p> })}
             {move || match playlists.get() {
@@ -42,7 +48,7 @@ pub fn Playlists() -> impl IntoView {
                 Some(Err(error)) => view! { <ErrorView error /> }.into_any(),
                 Some(Ok(list)) if list.is_empty() => view! { <p class="muted">"No playlists yet."</p> }.into_any(),
                 Some(Ok(list)) => view! {
-                    <ul class="cards">
+                    <ul class="cards appear">
                         {list.into_iter().map(|p| view! {
                             <li>
                                 <A href=format!("/playlists/{}", p.id)>
@@ -76,17 +82,34 @@ pub fn PlaylistDetail() -> impl IntoView {
     }
 }
 
+/// How long a moved or removed row animates; matches app.css.
+const ROW_ANIMATION: Duration = Duration::from_millis(220);
+
 #[component]
 fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'static) -> impl IntoView {
     let notice = use_notice();
     let navigate = use_navigate();
     let editing = RwSignal::new(false);
+    let saving = RwSignal::new(false);
     let confirm_delete = RwSignal::new(false);
+    let deleting = RwSignal::new(false);
     let name = RwSignal::new(playlist.name.clone());
     let description = RwSignal::new(playlist.description.clone().unwrap_or_default());
-    let id = playlist.id.clone();
-    let queue: Vec<_> = playlist.entries.iter().map(entry_item).collect();
-    let count = playlist.entries.len();
+    let id = StoredValue::new(playlist.id.clone());
+
+    // The rows as shown. Moves and removals change them here first, so they animate at once;
+    // the server follows, and if it refuses, the playlist reloads with the real order.
+    let entries = RwSignal::new(playlist.entries.clone());
+    let empty = Memo::new(move |_| entries.with(Vec::is_empty));
+    // One move or removal at a time, so positions sent to the server always match the rows.
+    let changing = RwSignal::new(false);
+    // The two rows a move just swapped: (where the moved row is now, where its neighbour is now).
+    let swapped = RwSignal::new(None::<(usize, usize)>);
+    let leaving = RwSignal::new(None::<usize>);
+    // Rows fade in one after another when the playlist opens, not again after each change.
+    let opening = RwSignal::new(true);
+    set_timeout(move || opening.set(false), Duration::from_millis(700));
+
     let filter = RwSignal::new(String::new());
     let filtering = move || !filter.with(|f| f.trim().is_empty());
     let matches = move |title: &str, artist: &str| {
@@ -96,63 +119,108 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
         })
     };
 
-    // Runs a playlist change, then reloads (positions shift after a move or removal).
-    let change = move |work: std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), AppError>>>>| {
+    let after_server = move |result: Result<(), AppError>| {
+        if let Err(e) = result {
+            notice.error(e.message);
+            reload();
+        }
+        changing.set(false);
+    };
+
+    let move_entry = move |from: usize, to: usize| {
+        if changing.get_untracked() || to >= entries.with_untracked(Vec::len) {
+            return;
+        }
+        changing.set(true);
+        entries.update(|list| list.swap(from, to));
+        swapped.set(Some((to, from)));
+        set_timeout(move || swapped.set(None), ROW_ANIMATION);
         leptos::task::spawn_local(async move {
-            match work.await {
-                Ok(()) => reload(),
+            after_server(ipc::move_playlist_entry(id.get_value(), from as u32, to as u32).await);
+        });
+    };
+
+    let remove_entry = move |index: usize| {
+        if changing.get_untracked() {
+            return;
+        }
+        changing.set(true);
+        leaving.set(Some(index));
+        set_timeout(
+            move || {
+                entries.update(|list| {
+                    list.remove(index);
+                });
+                leaving.set(None);
+                leptos::task::spawn_local(async move {
+                    after_server(ipc::remove_playlist_entry(id.get_value(), index as u32).await);
+                });
+            },
+            ROW_ANIMATION,
+        );
+    };
+
+    // Which way a row slides in after a swap, if it was one of the two.
+    let slide = move |index: usize| {
+        swapped.with(|s| match *s {
+            Some((now, was)) if index == now => Some(if was > now { "from-below" } else { "from-above" }),
+            Some((moved, now)) if index == now => Some(if moved < now { "from-above" } else { "from-below" }),
+            _ => None,
+        })
+    };
+
+    let save = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let (n, d) = (name.get_untracked(), description.get_untracked());
+        saving.set(true);
+        leptos::task::spawn_local(async move {
+            match ipc::update_playlist(id.get_value(), n, (!d.trim().is_empty()).then_some(d)).await {
+                Ok(_) => {
+                    editing.set(false);
+                    reload();
+                }
                 Err(e) => notice.error(e.message),
+            }
+            saving.set(false);
+        });
+    };
+
+    let delete = move |_| {
+        let navigate = navigate.clone();
+        deleting.set(true);
+        leptos::task::spawn_local(async move {
+            match ipc::delete_playlist(id.get_value()).await {
+                Ok(()) => {
+                    notice.info("Playlist deleted.");
+                    navigate("/playlists", Default::default());
+                }
+                Err(e) => {
+                    deleting.set(false);
+                    notice.error(e.message);
+                }
             }
         });
     };
 
-    let save = {
-        let id = id.clone();
-        move |ev: leptos::ev::SubmitEvent| {
-            ev.prevent_default();
-            let (id, n, d) = (id.clone(), name.get_untracked(), description.get_untracked());
-            change(Box::pin(async move {
-                ipc::update_playlist(id, n, (!d.trim().is_empty()).then_some(d)).await.map(drop)
-            }));
-            editing.set(false);
-        }
-    };
-
-    let delete = {
-        let id = id.clone();
-        move |_| {
-            let id = id.clone();
-            let navigate = navigate.clone();
-            leptos::task::spawn_local(async move {
-                match ipc::delete_playlist(id).await {
-                    Ok(()) => {
-                        notice.info("Playlist deleted.");
-                        navigate("/playlists", Default::default());
-                    }
-                    Err(e) => notice.error(e.message),
-                }
-            });
-        }
-    };
-
-    let play_all = {
-        let queue = queue.clone();
-        move |_| leptos::task::spawn_local(ipc::play(queue.clone(), 0))
-    };
+    let queue = move || entries.with_untracked(|list| list.iter().map(entry_item).collect::<Vec<_>>());
 
     view! {
         <header class="page-head">
             <div>
                 <h1>{playlist.name.clone()}</h1>
-                <p class="muted">{format!("{count} tracks · {}", display(playlist.total_duration))}</p>
+                <p class="muted">{move || entries.with(|list| {
+                    format!("{} tracks · {}", list.len(), display(list.iter().map(|e| e.duration).sum::<f64>()))
+                })}</p>
                 {playlist.description.clone().map(|d| view! { <p>{d}</p> })}
             </div>
             <div class="actions">
-                <button class="primary" prop:disabled=count == 0 on:click=play_all>"▶ Play all"</button>
-                <button class="ghost" on:click=move |_| editing.update(|e| *e = !*e)>"Edit"</button>
+                <button class="primary" prop:disabled=move || empty.get()
+                    on:click=move |_| leptos::task::spawn_local(ipc::play(queue(), 0))>"▶ Play all"</button>
+                <button class="ghost" class:active=move || editing.get() on:click=move |_| editing.update(|e| *e = !*e)>"Edit"</button>
                 {move || if confirm_delete.get() {
                     view! {
-                        <button class="danger" on:click=delete.clone()>"Confirm delete"</button>
+                        <button class="danger" aria-busy=move || deleting.get().to_string()
+                            prop:disabled=move || deleting.get() on:click=delete.clone()>"Confirm delete"</button>
                         <button class="ghost" on:click=move |_| confirm_delete.set(false)>"Keep"</button>
                     }.into_any()
                 } else {
@@ -162,32 +230,35 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
         </header>
 
         <Show when=move || editing.get()>
-            <form class="stack-form" on:submit=save.clone()>
+            <form class="stack-form reveal" on:submit=save>
                 <label>"Name"<input type="text" bind:value=name /></label>
                 <label>"Description"<input type="text" bind:value=description /></label>
-                <div><button class="primary" type="submit">"Save"</button></div>
+                <div>
+                    <button class="primary" type="submit" aria-busy=move || saving.get().to_string()
+                        prop:disabled=move || saving.get()>"Save"</button>
+                </div>
             </form>
         </Show>
 
-        {if count == 0 {
-            view! { <p class="muted">"This playlist is empty. Add tracks from the Library."</p> }.into_any()
-        } else {
-            view! {
-                <input type="search" class="search" placeholder="Find in this playlist" aria-label="Find in this playlist" bind:value=filter />
-                <table class="tracks">
-                    <thead><tr><th class="col-num">"#"</th><th>"Title"</th><th class="col-artist">"Artist"</th><th class="col-time">"Time"</th><th class="col-actions"></th></tr></thead>
-                    <tbody>
-                        {playlist.entries.into_iter().enumerate().map(|(i, entry)| {
-                            let position = entry.position;
-                            let queue = queue.clone();
-                            let (up, down, remove) = (id.clone(), id.clone(), id.clone());
+        <Show when=move || !empty.get() fallback=|| view! {
+            <p class="muted">"This playlist is empty. Add tracks from the Library."</p>
+        }>
+            <input type="search" class="search" placeholder="Find in this playlist" aria-label="Find in this playlist" bind:value=filter />
+            <table class="tracks" class:appear=move || opening.get()>
+                <thead><tr><th class="col-num">"#"</th><th>"Title"</th><th class="col-artist">"Artist"</th><th class="col-time">"Time"</th><th class="col-actions"></th></tr></thead>
+                <tbody>
+                    {move || {
+                        let count = entries.with(Vec::len);
+                        entries.get().into_iter().enumerate().map(|(i, entry)| {
                             let (title, artist) = (entry.title.clone(), entry.artist.clone());
                             view! {
                                 <tr class:unavailable=!entry.is_available_offline && entry.you_tube_video_id.is_none()
+                                    class=move || slide(i).unwrap_or_default()
+                                    class:leaving=move || leaving.get() == Some(i)
                                     style:display=move || if matches(&title, &artist) { "" } else { "none" }>
                                     <td class="col-num">
                                         <button class="icon row-play" aria-label="Play"
-                                            on:click=move |_| leptos::task::spawn_local(ipc::play(queue.clone(), i))>"▶"</button>
+                                            on:click=move |_| leptos::task::spawn_local(ipc::play(queue(), i))>"▶"</button>
                                     </td>
                                     <td class="col-title">
                                         <A href=format!("/tracks/{}", entry.track_id) attr:class="title-link">{entry.title.clone()}</A>
@@ -198,18 +269,17 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
                                     <td class="col-actions">
                                         // Moving only makes sense in the whole list, not a filtered one.
                                         <button class="icon" aria-label="Move up" prop:disabled=move || { i == 0 || filtering() }
-                                            on:click=move |_| change(Box::pin(ipc::move_playlist_entry(up.clone(), position, position - 1)))>"↑"</button>
+                                            on:click=move |_| move_entry(i, i - 1)>"↑"</button>
                                         <button class="icon" aria-label="Move down" prop:disabled=move || { i + 1 == count || filtering() }
-                                            on:click=move |_| change(Box::pin(ipc::move_playlist_entry(down.clone(), position, position + 1)))>"↓"</button>
-                                        <button class="icon" aria-label="Remove"
-                                            on:click=move |_| change(Box::pin(ipc::remove_playlist_entry(remove.clone(), position)))>"✕"</button>
+                                            on:click=move |_| move_entry(i, i + 1)>"↓"</button>
+                                        <button class="icon" aria-label="Remove" on:click=move |_| remove_entry(i)>"✕"</button>
                                     </td>
                                 </tr>
                             }
-                        }).collect_view()}
-                    </tbody>
-                </table>
-            }.into_any()
-        }}
+                        }).collect_view()
+                    }}
+                </tbody>
+            </table>
+        </Show>
     }
 }
