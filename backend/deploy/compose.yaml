@@ -11,9 +11,18 @@
 
 name: old-country
 
+# Container output (the API's logs, Postgres's) is kept by Docker, which by default never deletes
+# any. Cap each container at 5 files of 10 MB; the oldest goes when a new one starts.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
     image: postgres:18
+    logging: *logging
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -35,6 +44,7 @@ services:
       args:
         YTDLP_VERSION: ${YTDLP_VERSION:-2026.10.26}
     image: old-country-api:local
+    logging: *logging
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"   # your user, so downloads in the music folder are yours
     depends_on:
@@ -54,6 +64,7 @@ services:
   # Aspire's dashboard on its own: the same logs, traces and metrics view as in development.
   dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:13.6
+    logging: *logging
     profiles: [dashboard]
     restart: unless-stopped
     ports:
