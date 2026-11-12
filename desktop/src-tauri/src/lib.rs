@@ -37,7 +37,22 @@ pub fn run() {
         .rotation_strategy(RotationStrategy::KeepSome(3))
         .build();
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // One running copy, like other music players: launching it again brings the open window to
+    // the front instead of starting a second player. Release builds only, so `cargo tauri dev`
+    // still starts while the installed app is open. It must be the first plugin registered.
+    if !cfg!(debug_assertions) {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            log::info!("another launch: showing the open window instead");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+
+    builder
         .plugin(logging)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())

@@ -21,6 +21,7 @@ tauri = { version = "2.12.5", features = [] }
 tauri-plugin-store = "2.5.1"
 tauri-plugin-log = "2.10.2"
 tauri-plugin-opener = "2.7.3"
+tauri-plugin-single-instance = "2.5.5"
 # native-tls (system OpenSSL) rather than the default aws-lc, which needs CMake to build.
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream", "native-tls", "http2"] }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
