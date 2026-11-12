@@ -1,0 +1,14 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.6.5">
+  <!-- Development orchestration: a persistent Postgres container plus the API, with the Aspire dashboard. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Run with `dotnet run`; the Aspire CLI bundle isn't needed for this AppHost. -->
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OldCountry.Api\OldCountry.Api.csproj" />
+  </ItemGroup>
+</Project>

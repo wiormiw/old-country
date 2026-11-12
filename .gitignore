@@ -1,0 +1,16 @@
+# .NET
+bin/
+obj/
+artifacts/
+TestResults/
+*.user
+.vs/
+.idea/
+
+# Rust / Tauri (desktop, later)
+target/
+dist/
+
+# OS / editors
+.DS_Store
+*.swp

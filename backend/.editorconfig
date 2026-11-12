@@ -1,0 +1,43 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,xml,csproj,props,slnx,yml,yaml,http}]
+indent_size = 2
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped:error
+csharp_using_directive_placement = outside_namespace:error
+dotnet_sort_system_directives_first = true
+
+# Immutability: fields that are only assigned in the constructor must be readonly (IDE0044),
+# structs whose members never mutate must be readonly (IDE0250), and so must non-mutating
+# struct members (IDE0251).
+dotnet_style_readonly_field = true:error
+dotnet_diagnostic.IDE0044.severity = error
+csharp_style_prefer_readonly_struct = true:error
+dotnet_diagnostic.IDE0250.severity = error
+csharp_style_prefer_readonly_struct_member = true:error
+dotnet_diagnostic.IDE0251.severity = error
+
+# Logging: source-generated [LoggerMessage] only, with constant templates.
+# CA1848 use LoggerMessage delegates / CA2254 constant template / CA1727 PascalCase placeholders
+# CA1873 avoid expensive argument evaluation when the level is disabled.
+dotnet_diagnostic.CA1848.severity = error
+dotnet_diagnostic.CA2254.severity = error
+dotnet_diagnostic.CA1727.severity = error
+dotnet_diagnostic.CA1873.severity = error
+
+# Generated EF migrations keep EF's own style.
+[**/Migrations/*.cs]
+generated_code = true
+
+# Test names read as sentences.
+[tests/**.cs]
+dotnet_diagnostic.CA1707.severity = none

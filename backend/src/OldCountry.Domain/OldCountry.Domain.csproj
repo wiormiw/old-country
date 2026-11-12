@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Depends on nothing: the rules of the music library, in plain C#. -->
+</Project>

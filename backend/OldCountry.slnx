@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/OldCountry.AppHost/OldCountry.AppHost.csproj" />
+    <Project Path="src/OldCountry.Api/OldCountry.Api.csproj" />
+    <Project Path="src/OldCountry.Domain/OldCountry.Domain.csproj" />
+    <Project Path="src/OldCountry.ServiceDefaults/OldCountry.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OldCountry.Api.Tests/OldCountry.Api.Tests.csproj" />
+    <Project Path="tests/OldCountry.Architecture.Tests/OldCountry.Architecture.Tests.csproj" />
+    <Project Path="tests/OldCountry.Domain.Tests/OldCountry.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

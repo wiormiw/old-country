@@ -1,0 +1,151 @@
+# Run the AppHost (`dotnet run --project src/OldCountry.AppHost`) and set the port the Aspire
+# dashboard shows for "api".
+@baseUrl = http://localhost:5000
+
+### Add a local FLAC track → 201 Created + Location
+# @name addLocal
+POST {{baseUrl}}/api/tracks
+Content-Type: application/json
+
+{
+  "title": "Dust Road",
+  "artist": "Old Country Band",
+  "durationSeconds": 215,
+  "localPath": "/srv/music/old-country-band/dust-road.flac",
+  "sizeBytes": 31457280,
+  "codec": "Flac",
+  "bitrateKbps": 1100,
+  "sampleRateHz": 44100
+}
+
+### Add a YouTube Music track (not yet downloaded) → 201
+POST {{baseUrl}}/api/tracks
+Content-Type: application/json
+
+{
+  "title": "Never Gonna Give You Up",
+  "artist": "Rick Astley",
+  "durationSeconds": 213,
+  "youTubeVideoId": "dQw4w9WgXcQ"
+}
+
+### Same local file again → 409 { code: "track.duplicate_file" }
+POST {{baseUrl}}/api/tracks
+Content-Type: application/json
+
+{
+  "title": "Dust Road (again)",
+  "artist": "Old Country Band",
+  "durationSeconds": 215,
+  "localPath": "/srv/music/old-country-band/dust-road.flac",
+  "sizeBytes": 31457280
+}
+
+### Neither a file nor a video → 400 { errors: { source: [...] } }
+POST {{baseUrl}}/api/tracks
+Content-Type: application/json
+
+{
+  "title": "Nowhere",
+  "artist": "Nobody",
+  "durationSeconds": 60
+}
+
+### Get the track created above → 200
+GET {{addLocal.response.headers.Location}}
+
+### Unknown id → 404 { code: "track.not_found" }
+GET {{baseUrl}}/api/tracks/0193f4a2-0000-7000-8000-000000000000
+
+### List the library, first page → 200
+GET {{baseUrl}}/api/tracks?page=1&pageSize=50
+
+### Page size over 200 → 400
+GET {{baseUrl}}/api/tracks?pageSize=1000
+
+### Scan the library folders → 202 Accepted (400 when Library:Roots is empty)
+# Configure folders with e.g. Library__Roots__0=/srv/music (env) or appsettings.
+POST {{baseUrl}}/api/tracks/scans
+
+### Scan status and the last report → 200
+GET {{baseUrl}}/api/tracks/scans/latest
+
+### Create a playlist → 201 Created + Location
+# @name createPlaylist
+POST {{baseUrl}}/api/playlists
+Content-Type: application/json
+
+{
+  "name": "Road trip",
+  "description": "Long drives"
+}
+
+### List playlists → 200
+GET {{baseUrl}}/api/playlists
+
+### Append tracks (ids from the track requests above) → 200 summary; unknown id → 400
+POST {{baseUrl}}/api/playlists/{{createPlaylist.response.body.$.id}}/tracks
+Content-Type: application/json
+
+{
+  "trackIds": ["{{addLocal.response.body.$.id}}", "{{addLocal.response.body.$.id}}"]
+}
+
+### Playlist with its tracks in order → 200
+GET {{createPlaylist.response.headers.Location}}
+
+### Move the entry at position 1 to position 0 → 204
+POST {{baseUrl}}/api/playlists/{{createPlaylist.response.body.$.id}}/tracks/move
+Content-Type: application/json
+
+{
+  "from": 1,
+  "to": 0
+}
+
+### Remove the entry at position 0 → 204 (missing position → 404)
+DELETE {{baseUrl}}/api/playlists/{{createPlaylist.response.body.$.id}}/tracks/0
+
+### Rename → 200
+PUT {{baseUrl}}/api/playlists/{{createPlaylist.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "name": "Night drive"
+}
+
+### Delete the playlist (tracks stay) → 204
+DELETE {{baseUrl}}/api/playlists/{{createPlaylist.response.body.$.id}}
+
+### Stream a library track's local file (supports Range for seeking) → 200/206; no local file → 404
+GET {{baseUrl}}/api/tracks/{{addLocal.response.body.$.id}}/audio
+Range: bytes=0-65535
+
+### Search YouTube → 200 (each hit says whether it's already in the library)
+GET {{baseUrl}}/api/youtube-music/search?query=rick%20astley&limit=10
+
+### Play a YouTube video's audio (first request fetches via yt-dlp, then cached; Range works)
+GET {{baseUrl}}/api/youtube-music/videos/dQw4w9WgXcQ/audio
+Range: bytes=0-65535
+
+### Download videos into the library for offline play → 202
+POST {{baseUrl}}/api/youtube-music/downloads
+Content-Type: application/json
+
+{
+  "videoIds": ["dQw4w9WgXcQ"]
+}
+
+### Download progress → 200
+GET {{baseUrl}}/api/youtube-music/downloads
+
+### Import a YouTube Music playlist as a library playlist → 201 ("liked" needs YouTubeMusic:CookiesFile)
+POST {{baseUrl}}/api/youtube-music/imports
+Content-Type: application/json
+
+{
+  "playlist": "https://music.youtube.com/playlist?list=PLxxxxxxxx"
+}
+
+### OpenAPI 3.2 document (Development) — interactive UI at /scalar
+GET {{baseUrl}}/openapi/v1.json
