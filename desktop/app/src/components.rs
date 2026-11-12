@@ -64,6 +64,39 @@ pub fn NoticeBar() -> impl IntoView {
     }
 }
 
+const SEEK_STEP_SECONDS: f64 = 5.0;
+const VOLUME_STEP: f32 = 0.05;
+/// Pixels of wheel movement per step. A mouse notch moves at least this far, so each notch is one
+/// step; a touchpad's many small movements add up to a step every this many pixels.
+const WHEEL_STEP_PIXELS: f64 = 50.0;
+
+/// Turns a wheel event into whole steps: +1 for up (away from you), -1 for down, `None` while a
+/// touchpad's small movements are still adding up. `pending` carries the partial movement.
+fn wheel_steps(pending: StoredValue<f64>, ev: &leptos::ev::WheelEvent) -> Option<i32> {
+    let pixels = match ev.delta_mode() {
+        1 => ev.delta_y() * 33.0, // lines
+        2 => ev.delta_y() * 400.0, // pages
+        _ => ev.delta_y(),
+    };
+    if pixels == 0.0 {
+        return None;
+    }
+    // Wheel down is a positive delta; a step "up" means more volume or further ahead.
+    let direction = |delta: f64| if delta < 0.0 { 1 } else { -1 };
+    if pixels.abs() >= WHEEL_STEP_PIXELS {
+        pending.set_value(0.0);
+        return Some(direction(pixels));
+    }
+    let total = pending.get_value() + pixels;
+    if total.abs() >= WHEEL_STEP_PIXELS {
+        pending.set_value(0.0);
+        Some(direction(total))
+    } else {
+        pending.set_value(total);
+        None
+    }
+}
+
 #[component]
 pub fn NowPlaying() -> impl IntoView {
     let player = use_player().0;
@@ -76,6 +109,23 @@ pub fn NowPlaying() -> impl IntoView {
     let position = move || seeking.get().unwrap_or_else(|| player.with(|s| s.position));
     let duration = move || player.with(|s| s.duration.unwrap_or(0.0));
     let volume = move || volume_drag.get().unwrap_or_else(|| player.with(|s| s.volume));
+
+    // The mouse wheel over a slider: up raises the volume or skips ahead, down the opposite.
+    let seek_wheel = StoredValue::new(0.0);
+    let volume_wheel = StoredValue::new(0.0);
+    let on_seek_wheel = move |ev: leptos::ev::WheelEvent| {
+        let Some(steps) = wheel_steps(seek_wheel, &ev) else { return };
+        let (current, now, length) = player.with_untracked(|s| (s.current().is_some(), s.position, s.duration.unwrap_or(0.0)));
+        if current && length > 0.0 {
+            let target = (now + f64::from(steps) * SEEK_STEP_SECONDS).clamp(0.0, length);
+            leptos::task::spawn_local(ipc::seek(target));
+        }
+    };
+    let on_volume_wheel = move |ev: leptos::ev::WheelEvent| {
+        let Some(steps) = wheel_steps(volume_wheel, &ev) else { return };
+        let level = (player.with_untracked(|s| s.volume) + steps as f32 * VOLUME_STEP).clamp(0.0, 1.0);
+        leptos::task::spawn_local(ipc::set_volume(level, true));
+    };
 
     view! {
         <footer class="now-playing">
@@ -125,6 +175,8 @@ pub fn NowPlaying() -> impl IntoView {
                         min="0"
                         step="0.5"
                         aria-label="Seek"
+                        title="Drag, or scroll to skip 5 seconds"
+                        on:wheel=on_seek_wheel
                         prop:max=move || duration().max(0.5)
                         prop:value=position
                         prop:disabled=move || current.get().is_none()
@@ -148,6 +200,8 @@ pub fn NowPlaying() -> impl IntoView {
                     max="1"
                     step="0.01"
                     aria-label="Volume"
+                    title={move || format!("Volume {}% (scroll to change)", (volume() * 100.0).round())}
+                    on:wheel=on_volume_wheel
                     prop:value=volume
                     on:input=move |ev| {
                         if let Ok(v) = event_target_value(&ev).parse::<f32>() {
