@@ -2,6 +2,8 @@
   <!-- Development orchestration: a persistent Postgres container plus the API, with the Aspire dashboard. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- Holds the dev Postgres password (Parameters:postgres-password); see Program.cs. -->
+    <UserSecretsId>12967a33-34f5-4bf4-87e7-a445f40276a8</UserSecretsId>
     <!-- Run with `dotnet run`; the Aspire CLI bundle isn't needed for this AppHost. -->
     <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
   </PropertyGroup>
