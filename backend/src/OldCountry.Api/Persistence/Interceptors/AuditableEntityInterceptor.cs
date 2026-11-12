@@ -28,7 +28,10 @@ internal sealed class AuditableEntityInterceptor(TimeProvider clock) : SaveChang
 
     private void Stamp(DbContext context)
     {
+        // Postgres keeps microseconds; .NET has 100 ns ticks. Rounding here means the value a
+        // response reports right after saving is the same one every later read returns.
         var now = clock.GetUtcNow();
+        now = now.AddTicks(-(now.Ticks % (TimeSpan.TicksPerMillisecond / 1000)));
         foreach (var entry in context.ChangeTracker.Entries())
         {
             if (entry.Metadata.FindProperty(CreatedAt) is null) continue;

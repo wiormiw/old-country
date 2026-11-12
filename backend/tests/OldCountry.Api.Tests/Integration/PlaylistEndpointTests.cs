@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using OldCountry.Api.Features.Playlists;
 using OldCountry.Api.Features.Tracks;
+using OldCountry.Api.Features.Tracks.GetTrack;
 
 namespace OldCountry.Api.Tests.Integration;
 
@@ -58,6 +59,10 @@ public sealed class PlaylistEndpointTests(ApiFactory factory)
         var summary = (await renamed.Content.ReadFromJsonAsync<PlaylistSummaryResponse>(Json, Ct)).ShouldNotBeNull();
         summary.Name.ShouldBe("Night drive");
         summary.UpdatedAt.ShouldNotBeNull();
+
+        // The track's detail page lists the playlists it's in.
+        var detail = (await client.GetFromJsonAsync<TrackDetailResponse>($"/api/tracks/{one}", Json, Ct)).ShouldNotBeNull();
+        detail.Playlists.ShouldContain(p => p.Id == id && p.Name == "Night drive");
 
         (await client.DeleteAsync($"/api/playlists/{id}", Ct)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await client.GetAsync($"/api/playlists/{id}", Ct)).StatusCode.ShouldBe(HttpStatusCode.NotFound);

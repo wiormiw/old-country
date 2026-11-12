@@ -94,7 +94,26 @@ internal sealed partial class YtDlpProcess(IOptions<YouTubeMusicOptions> options
         return YtDlpJson.ParseDownload(output);
     }
 
+    /// <summary>
+    /// Runs yt-dlp, retrying once after a short pause when it fails: YouTube refuses requests now
+    /// and then (throttling, a stale player script) and a second try usually works. A missing
+    /// binary or a timeout isn't retried.
+    /// </summary>
     private async Task<string> RunAsync(string operation, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await RunOnceAsync(operation, arguments, cancellationToken);
+        }
+        catch (YtDlpException exception) when (exception.Code == "youtube.failed")
+        {
+            Log.Retrying(logger, operation, exception.Message);
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            return await RunOnceAsync(operation, arguments, cancellationToken);
+        }
+    }
+
+    private async Task<string> RunOnceAsync(string operation, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
         var start = new ProcessStartInfo(Settings.YtDlpPath)
         {
@@ -169,6 +188,9 @@ internal sealed partial class YtDlpProcess(IOptions<YouTubeMusicOptions> options
 
         [LoggerMessage(EventId = 1302, Level = LogLevel.Warning, Message = "yt-dlp {Operation} timed out after {TimeoutSeconds:0} s")]
         public static partial void TimedOut(ILogger logger, string operation, double timeoutSeconds);
+
+        [LoggerMessage(EventId = 1303, Level = LogLevel.Information, Message = "yt-dlp {Operation} failed ({Reason}); retrying once")]
+        public static partial void Retrying(ILogger logger, string operation, string reason);
     }
 }
 

@@ -7,7 +7,8 @@ namespace OldCountry.Api.Tests.Integration;
 /// <summary>Stands in for yt-dlp in API tests: canned search and playlist results, and real (silent) audio files.</summary>
 internal sealed class FakeYtDlp : IYtDlp
 {
-    public static readonly YtVideo Song = new(new YouTubeVideoId("fakeSong001"), "Fake Song", "Fake Artist - Topic", TimeSpan.FromSeconds(3), null);
+    // Already parsed: trimming YouTube's " - Topic" channel suffix is the parser's job (YtDlpJsonTests).
+    public static readonly YtVideo Song = new(new YouTubeVideoId("fakeSong001"), "Fake Song", "Fake Artist", TimeSpan.FromSeconds(3), null);
     public static readonly YtVideo Other = new(new YouTubeVideoId("fakeSong002"), "Other Song", "Fake Artist", TimeSpan.FromSeconds(2), null);
     public static readonly YtVideo NoDuration = new(new YouTubeVideoId("fakeSong003"), "Live Stream", "Someone", null, null);
 

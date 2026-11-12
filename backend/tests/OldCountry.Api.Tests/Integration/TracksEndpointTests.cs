@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using OldCountry.Api.Common;
 using OldCountry.Api.Features.Tracks;
+using OldCountry.Api.Features.Tracks.GetTrack;
 
 namespace OldCountry.Api.Tests.Integration;
 
@@ -41,8 +42,12 @@ public sealed class TracksEndpointTests(ApiFactory factory)
         track.IsAvailableOffline.ShouldBeTrue();
         track.Codec.ShouldBe(Domain.Library.AudioCodec.Flac);
 
-        var fetched = await client.GetFromJsonAsync<TrackResponse>(created.Headers.Location, Json, Ct);
-        fetched.ShouldBe(track);
+        var fetched = (await client.GetFromJsonAsync<TrackDetailResponse>(created.Headers.Location, Json, Ct)).ShouldNotBeNull();
+        fetched.Track.ShouldBe(track);
+        fetched.SizeBytes.ShouldBe(31_457_280);
+        fetched.BitrateKbps.ShouldBe(1_100);
+        fetched.FileName.ShouldNotBeNull().ShouldEndWith(".flac");
+        fetched.Playlists.ShouldBeEmpty();
     }
 
     [Fact]
@@ -116,5 +121,25 @@ public sealed class TracksEndpointTests(ApiFactory factory)
         var response = await client.GetAsync("/api/tracks?pageSize=1000", Ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Search_matches_titles_and_artists_ignoring_case_and_treats_wildcards_literally()
+    {
+        using var client = factory.CreateApiClient();
+        var marker = Guid.NewGuid().ToString("N")[..8];
+        await client.PostAsJsonAsync("/api/tracks", LocalTrack($"Searchable {marker}", $"/srv/music/{Guid.NewGuid()}.flac"), Ct);
+        await client.PostAsJsonAsync("/api/tracks", LocalTrack($"100% {marker}", $"/srv/music/{Guid.NewGuid()}.flac"), Ct);
+
+        var byTitle = await client.GetFromJsonAsync<PagedResponse<TrackResponse>>($"/api/tracks?search=SEARCHABLE%20{marker}", Json, Ct);
+        byTitle.ShouldNotBeNull().Items.ShouldHaveSingleItem().Title.ShouldBe($"Searchable {marker}");
+
+        // "%" is a literal percent sign, not "anything".
+        var literal = await client.GetFromJsonAsync<PagedResponse<TrackResponse>>($"/api/tracks?search={Uri.EscapeDataString($"100% {marker}")}", Json, Ct);
+        literal.ShouldNotBeNull().Items.ShouldHaveSingleItem().Title.ShouldBe($"100% {marker}");
+
+        var byArtist = await client.GetFromJsonAsync<PagedResponse<TrackResponse>>("/api/tracks?search=old%20country%20band&pageSize=200", Json, Ct);
+        byArtist.ShouldNotBeNull().Items.ShouldNotBeEmpty();
+        byArtist.Items.ShouldAllBe(t => t.Artist == "Old Country Band");
     }
 }

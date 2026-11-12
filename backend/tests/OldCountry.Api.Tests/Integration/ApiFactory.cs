@@ -34,7 +34,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             DockerUnavailableReason = $"Docker is not available ({exception.GetType().Name}); start it to run integration tests.";
+            return;
         }
+
+        // Start the server (and its migrations) once, here, before tests run in parallel: two
+        // tests asking for a client at the same moment would otherwise each start one.
+        using var warmUp = CreateClient();
     }
 
     public HttpClient CreateApiClient()

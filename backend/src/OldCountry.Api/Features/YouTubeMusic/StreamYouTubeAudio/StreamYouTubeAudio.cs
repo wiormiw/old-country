@@ -18,11 +18,17 @@ namespace OldCountry.Api.Features.YouTubeMusic.StreamYouTubeAudio;
 /// downloader does. yt-dlp keeps up with those changes; this class just reuses it. A song takes a
 /// few seconds the first time and is instant (and seekable) after that.
 /// </remarks>
-internal sealed partial class YouTubeAudioCache(IYtDlp ytDlp, IOptions<YouTubeMusicOptions> options, TimeProvider clock, ILogger<YouTubeAudioCache> logger)
+internal sealed partial class YouTubeAudioCache(
+    IYtDlp ytDlp,
+    IOptions<YouTubeMusicOptions> options,
+    TimeProvider clock,
+    IHostApplicationLifetime lifetime,
+    ILogger<YouTubeAudioCache> logger)
 {
-    // One fetch per video at a time: a player opening several range requests at once waits for
-    // the first fetch instead of starting its own.
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _fetching = new(StringComparer.Ordinal);
+    // One fetch per video, shared by everyone asking for it (a player opens several range requests
+    // at once). The fetch belongs to the server, not to a request: if the listener skips ahead or
+    // disconnects, it still finishes and is cached, so coming back to the song is instant.
+    private readonly ConcurrentDictionary<string, Lazy<Task<string>>> _inFlight = new(StringComparer.Ordinal);
 
     public string Folder => options.Value.StreamCacheFolder ?? Path.Combine(Path.GetTempPath(), "old-country", "stream-cache");
 
@@ -30,26 +36,32 @@ internal sealed partial class YouTubeAudioCache(IYtDlp ytDlp, IOptions<YouTubeMu
     {
         if (Find(videoId) is { } cached) return (Touch(cached), null);
 
-        var gate = _fetching.GetOrAdd(videoId.Value, _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(cancellationToken);
+        var fetch = _inFlight.GetOrAdd(videoId.Value, _ => new Lazy<Task<string>>(() => FetchAsync(videoId)));
         try
         {
-            if (Find(videoId) is { } fetchedMeanwhile) return (Touch(fetchedMeanwhile), null);
-
-            Directory.CreateDirectory(Folder);
-            var path = await ytDlp.FetchAudioAsync(videoId, Folder, cancellationToken);
-            var sizeBytes = new FileInfo(path).Length;
-            Log.Cached(logger, videoId.Value, sizeBytes);
-            Trim();
-            return (path, null);
+            // The caller's token only stops this caller waiting, never the fetch itself.
+            return (await fetch.Value.WaitAsync(cancellationToken), null);
         }
         catch (YtDlpException exception)
         {
             return (null, exception.ToError());
         }
+    }
+
+    private async Task<string> FetchAsync(YouTubeVideoId videoId)
+    {
+        try
+        {
+            Directory.CreateDirectory(Folder);
+            var path = await ytDlp.FetchAudioAsync(videoId, Folder, lifetime.ApplicationStopping);
+            var sizeBytes = new FileInfo(path).Length;
+            Log.Cached(logger, videoId.Value, sizeBytes);
+            Trim();
+            return path;
+        }
         finally
         {
-            gate.Release();
+            _inFlight.TryRemove(videoId.Value, out _);
         }
     }
 

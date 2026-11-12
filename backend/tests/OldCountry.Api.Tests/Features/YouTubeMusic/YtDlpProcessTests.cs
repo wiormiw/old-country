@@ -59,6 +59,24 @@ public sealed class YtDlpProcessTests : IDisposable
     }
 
     [Fact]
+    public async Task A_failure_is_retried_once_and_a_second_success_wins()
+    {
+        // Fails the first time, succeeds the second: a marker file remembers the first attempt.
+        var marker = Path.Combine(_directory, "tried");
+        var ytDlp = WithScript($$"""
+            if [ -f '{{marker}}' ]; then
+              printf '{"title":"t","entries":[{"id":"dQw4w9WgXcQ","title":"second try","duration":10}]}'
+            else
+              touch '{{marker}}'; echo "ERROR: HTTP Error 403: Forbidden" >&2; exit 1
+            fi
+            """);
+
+        var results = await ytDlp.SearchAsync("x", 1, Ct);
+
+        results.ShouldHaveSingleItem().Title.ShouldBe("second try");
+    }
+
+    [Fact]
     public async Task A_missing_binary_says_how_to_fix_it()
     {
         var error = await Should.ThrowAsync<YtDlpException>(() => Process("/nonexistent/yt-dlp").SearchAsync("x", 1, Ct));

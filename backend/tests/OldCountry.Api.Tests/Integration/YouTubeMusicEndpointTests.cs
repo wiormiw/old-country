@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using OldCountry.Api.Features.Playlists;
 using OldCountry.Api.Features.Tracks;
+using OldCountry.Api.Features.Tracks.GetTrack;
 using OldCountry.Api.Features.YouTubeMusic.DownloadTracks;
 using OldCountry.Api.Features.YouTubeMusic.ImportPlaylist;
 using OldCountry.Api.Features.YouTubeMusic.SearchYouTubeMusic;
@@ -33,7 +34,7 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
         var playlist = (await client.GetFromJsonAsync<PlaylistResponse>($"/api/playlists/{report.PlaylistId}", Json, Ct)).ShouldNotBeNull();
         playlist.Entries.Select(e => e.Title).ShouldBe(["Fake Song", "Other Song", "Fake Song"]);
         playlist.Entries.ShouldAllBe(e => !e.IsAvailableOffline);
-        playlist.Entries[0].Artist.ShouldBe("Fake Artist");   // " - Topic" removed
+        playlist.Entries[0].Artist.ShouldBe("Fake Artist");
 
         // Importing again reuses the tracks instead of duplicating them.
         var again = (await (await client.PostAsJsonAsync("/api/youtube-music/imports", new { playlist = "PLfakeMix" }, Ct))
@@ -53,7 +54,7 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
         var done = await WaitFor(client, job.JobId);
         done.State.ShouldBe(DownloadState.Completed, done.Error);
 
-        var track = (await client.GetFromJsonAsync<TrackResponse>($"/api/tracks/{done.TrackId}", Json, Ct)).ShouldNotBeNull();
+        var track = (await client.GetFromJsonAsync<TrackDetailResponse>($"/api/tracks/{done.TrackId}", Json, Ct)).ShouldNotBeNull().Track;
         track.IsAvailableOffline.ShouldBeTrue();
         track.YouTubeVideoId.ShouldBe(FakeYtDlp.Song.Id.Value);
 
