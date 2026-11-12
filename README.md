@@ -28,6 +28,21 @@ cd backend
 dotnet run --project src/OldCountry.AppHost
 ```
 
+| What | Where |
+|---|---|
+| API | `http://localhost:5000` (set this in the desktop app's Settings) |
+| Aspire dashboard | `http://localhost:15888` (the login link is printed at startup) |
+| PostgreSQL | `localhost:55432`, user `postgres`, database `oldcountry`, data in a persistent Docker volume |
+
+The Postgres password is an Aspire secret kept in the AppHost's user secrets, not in the repo. Set it
+once, and point the API at your music:
+
+```bash
+dotnet user-secrets set Parameters:postgres-password '<choose one>' --project src/OldCountry.AppHost
+dotnet user-secrets set MusicFolder /path/to/music --project src/OldCountry.AppHost
+dotnet user-secrets list --project src/OldCountry.AppHost   # shows both
+```
+
 Migrations run on startup in Development. The API's OpenAPI document is at `/openapi/v1.json` and an interactive UI at `/scalar`. `src/OldCountry.Api/OldCountry.Api.http` has a ready-made request for every endpoint.
 
 **Configuration** (appsettings, environment variables like `Library__Roots__0`, or user secrets):
@@ -89,6 +104,12 @@ desktop/
 - **Audio cache**: a track streams into the cache while it plays; the decoder reads the growing file
   and waits for bytes it reaches early. Finished files replay offline and are evicted least recently
   played first (2 GB by default, set in Settings).
+- **Shuffle and repeat**: shuffle is a bag, not a random pick per song. Every song plays once before
+  any song plays again; with repeat-all, each cycle is reshuffled (and never opens with the song that
+  just ended), and songs added mid-cycle join the unheard part. Repeat-one replays a song when it ends;
+  Next still moves on. Both are remembered between sessions.
+- **No crackles under load**: decoding runs a few seconds ahead on its own thread, so the sound card's
+  real-time callback only copies ready samples, through a roomier 4096-frame output buffer.
 - **Media keys**: MPRIS (souvlaki), so KDE's media controls show the current song and work while the
   window is hidden.
 
