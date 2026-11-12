@@ -35,7 +35,8 @@ internal sealed class GetPlaylistHandler(OldCountryDbContext db) : IQueryHandler
             // A track removed from the library leaves a gap; positions keep matching the stored list.
             if (!tracks.TryGetValue(entry.TrackId, out var row)) continue;
             entries.Add(new PlaylistEntryResponse(
-                position, entry.TrackId.Value, row.Track.Title, row.ArtistName, row.Track.Duration, row.Track.IsAvailableOffline, entry.AddedAt));
+                position, entry.TrackId.Value, row.Track.Title, row.ArtistName, row.Track.Duration, row.Track.IsAvailableOffline,
+                row.Track.YouTubeVideoId?.Value, entry.AddedAt));
         }
 
         return new PlaylistResponse(

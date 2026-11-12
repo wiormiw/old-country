@@ -48,6 +48,7 @@ public sealed record PlaylistSummaryResponse(
 /// <param name="Artist">Artist name.</param>
 /// <param name="Duration">Track length.</param>
 /// <param name="IsAvailableOffline">Whether the track has a local file.</param>
+/// <param name="YouTubeVideoId">The YouTube Music video id, when the track exists there; lets clients stream tracks without a local file.</param>
 /// <param name="AddedAt">When the track was added to this playlist.</param>
 public sealed record PlaylistEntryResponse(
     int Position,
@@ -56,6 +57,7 @@ public sealed record PlaylistEntryResponse(
     string Artist,
     TimeSpan Duration,
     bool IsAvailableOffline,
+    string? YouTubeVideoId,
     DateTimeOffset AddedAt);
 
 /// <summary>A playlist with its tracks in order.</summary>
