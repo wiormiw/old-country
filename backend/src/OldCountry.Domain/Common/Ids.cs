@@ -23,3 +23,10 @@ public readonly record struct PlaylistId(Guid Value)
 
     public override string ToString() => Value.ToString();
 }
+
+public readonly record struct DownloadJobId(Guid Value)
+{
+    public static DownloadJobId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString();
+}

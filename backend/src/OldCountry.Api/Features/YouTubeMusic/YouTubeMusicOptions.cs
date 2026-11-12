@@ -41,6 +41,21 @@ public sealed class YouTubeMusicOptions
     /// <summary>How long one yt-dlp run may take before it is stopped.</summary>
     public TimeSpan CommandTimeout { get; init; } = TimeSpan.FromMinutes(5);
 
+    /// <summary>Wait between one download and the next, so a long queue looks less like a bot.</summary>
+    public TimeSpan DownloadPause { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How long the download queue rests when YouTube says to slow down (HTTP 429, "confirm
+    /// you're not a bot"). Doubles each time it happens again in a row, up to 8 times this.
+    /// </summary>
+    public TimeSpan RateLimitPause { get; init; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// How long a worker owns a download it started. Long enough for the slowest download (two
+    /// yt-dlp runs plus saving); if the server dies mid-download, the job runs again after this.
+    /// </summary>
+    public TimeSpan DownloadLease => CommandTimeout * 2 + TimeSpan.FromMinutes(2);
+
     public static readonly IReadOnlySet<string> AudioFormats = new HashSet<string>(StringComparer.Ordinal) { "opus", "m4a", "mp3", "flac" };
 
     /// <summary>
@@ -86,6 +101,12 @@ internal sealed class YouTubeMusicOptionsValidator : AbstractValidator<YouTubeMu
         RuleFor(o => o.CommandTimeout)
             .InclusiveBetween(TimeSpan.FromSeconds(10), TimeSpan.FromHours(1))
             .WithMessage("CommandTimeout must be between 10 seconds and 1 hour.");
+        RuleFor(o => o.DownloadPause)
+            .InclusiveBetween(TimeSpan.Zero, TimeSpan.FromMinutes(10))
+            .WithMessage("DownloadPause must be between 0 and 10 minutes.");
+        RuleFor(o => o.RateLimitPause)
+            .InclusiveBetween(TimeSpan.FromSeconds(1), TimeSpan.FromHours(6))
+            .WithMessage("RateLimitPause must be between 1 second and 6 hours.");
     }
 
     private static readonly string[] Runtimes = ["node", "deno", "quickjs", "bun"];

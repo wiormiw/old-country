@@ -36,7 +36,7 @@ internal sealed class GetPlaylistHandler(OldCountryDbContext db) : IQueryHandler
             if (!tracks.TryGetValue(entry.TrackId, out var row)) continue;
             entries.Add(new PlaylistEntryResponse(
                 position, entry.TrackId.Value, row.Track.Title, row.ArtistName, row.Track.Duration, row.Track.IsAvailableOffline,
-                row.Track.YouTubeVideoId?.Value, entry.AddedAt));
+                row.Track.YouTubeVideoId?.Value, entry.AddedAt, row.Track.DownloadProblem?.Reason));
         }
 
         return new PlaylistResponse(

@@ -6,7 +6,7 @@ use shared::timespan::display;
 
 use crate::components::{ErrorView, Loading, open_picker};
 use crate::ipc;
-use crate::state::{track_item, use_notice};
+use crate::state::{problem_label, track_item, use_notice};
 
 /// One song: what it is, where it plays from, and the playlists it's in.
 #[component]
@@ -114,6 +114,10 @@ fn TrackView(detail: TrackDetail) -> impl IntoView {
             {detail.size_bytes.map(|bytes| view! { <dt>"File size"</dt><dd>{format!("{:.1} MB", bytes as f64 / 1_048_576.0)}</dd> })}
             {detail.file_name.clone().map(|name| view! { <dt>"File"</dt><dd><code>{name}</code></dd> })}
             {track.you_tube_video_id.clone().map(|id| view! { <dt>"YouTube id"</dt><dd><code>{id}</code></dd> })}
+            {track.download_problem.clone().filter(|_| !track.is_available_offline).map(|p| view! {
+                <dt>"Download"</dt>
+                <dd><span class="badge badge-error">{problem_label(&p)}</span>" YouTube refused the last download."</dd>
+            })}
             <dt>"Added"</dt><dd>{track.created_at.get(..10).unwrap_or(&track.created_at).to_owned()}</dd>
         </dl>
 

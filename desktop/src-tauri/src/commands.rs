@@ -4,7 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use shared::{
-    AppError, DownloadStatus, ImportReport, Paged, PlayerState, Playlist, PlaylistSummary, QueueItem, RepeatMode,
+    AppError, DownloadStatus, Downloads, ImportReport, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, RepeatMode,
     ScanStatus, Settings, Track, TrackDetail, YouTubeResult,
 };
 use tauri::{AppHandle, Manager, State};
@@ -163,8 +163,13 @@ pub async fn youtube_download(state: State<'_, AppState>, video_ids: Vec<String>
 }
 
 #[tauri::command]
-pub async fn youtube_downloads(state: State<'_, AppState>) -> Reply<Vec<DownloadStatus>> {
+pub async fn youtube_downloads(state: State<'_, AppState>) -> Reply<Downloads> {
     state.api.youtube_downloads().await
+}
+
+#[tauri::command]
+pub async fn download_playlist(state: State<'_, AppState>, id: String, retry_skipped: bool) -> Reply<PlaylistDownloadReport> {
+    state.api.download_playlist(&id, retry_skipped).await
 }
 
 #[tauri::command]

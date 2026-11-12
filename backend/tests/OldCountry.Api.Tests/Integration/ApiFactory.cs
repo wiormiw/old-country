@@ -57,6 +57,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Library:ScanOnStartup", "false");
         builder.UseSetting("Library:RescanInterval", "00:00:00");
         builder.UseSetting("YouTubeMusic:StreamCacheFolder", Path.Combine(LibraryRoot, ".stream-cache"));
+        // Downloads back to back, and a one-second rest when "rate limited", so tests stay fast.
+        builder.UseSetting("YouTubeMusic:DownloadPause", "00:00:00");
+        builder.UseSetting("YouTubeMusic:RateLimitPause", "00:00:01");
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IYtDlp>();

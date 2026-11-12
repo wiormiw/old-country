@@ -136,7 +136,16 @@ Content-Type: application/json
   "videoIds": ["dQw4w9WgXcQ"]
 }
 
-### Download progress → 200
+### Download every song of a playlist that isn't downloaded yet → 202 (uses the playlist created above)
+### retrySkipped: also retry songs YouTube refused before (Premium only, private, ...)
+POST {{baseUrl}}/api/youtube-music/playlists/{{createPlaylist.response.body.$.id}}/downloads
+Content-Type: application/json
+
+{
+  "retrySkipped": false
+}
+
+### Download progress, and whether the queue is resting after a rate limit → 200
 GET {{baseUrl}}/api/youtube-music/downloads
 
 ### Import a YouTube Music playlist as a library playlist → 201 ("liked" needs YouTubeMusic:CookiesFile)

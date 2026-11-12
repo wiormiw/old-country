@@ -22,6 +22,10 @@ pub struct Track {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub you_tube_video_id: Option<String>,
     pub created_at: String,
+    /// Why YouTube refused the last download (`PremiumOnly`, `Private`, `Unavailable`,
+    /// `AgeRestricted`, `RegionBlocked`, `Failed`), until one succeeds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_problem: Option<String>,
 }
 
 /// A playlist a track appears in.
@@ -114,6 +118,9 @@ pub struct PlaylistEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub you_tube_video_id: Option<String>,
     pub added_at: String,
+    /// Why YouTube refused the last download, until one succeeds (see [`Track::download_problem`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_problem: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -160,14 +167,45 @@ pub enum DownloadState {
 pub struct DownloadStatus {
     pub job_id: String,
     pub video_id: String,
+    /// The song's title, when it's a library track.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub state: DownloadState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub track_id: Option<String>,
+    /// Why it failed, as a stable code (`youtube.premium_only`, `youtube.private`, ...).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(default)]
+    pub attempts: u32,
     pub queued_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<String>,
+}
+
+/// Recent downloads, and whether the queue is resting because YouTube asked us to slow down.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Downloads {
+    pub jobs: Vec<DownloadStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused_until: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pause_reason: Option<String>,
+}
+
+/// What asking for a playlist's downloads did.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistDownloadReport {
+    pub queued: u32,
+    pub already_downloaded: u32,
+    pub already_queued: u32,
+    /// Left out: YouTube refused them before for a lasting reason (Premium only, private, ...).
+    pub skipped: u32,
+    pub not_on_you_tube: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -267,6 +305,7 @@ mod tests {
             is_available_offline: false,
             you_tube_video_id: None,
             added_at: "x".into(),
+            download_problem: None,
         };
         let json = serde_json::to_string(&entry).unwrap();
         assert!(json.contains(r#""duration":"01:06:40""#));

@@ -11,6 +11,7 @@ namespace OldCountry.Api.Features.Tracks;
 /// <param name="Codec">Codec of the local file, when there is one.</param>
 /// <param name="YouTubeVideoId">The YouTube Music video id, when linked.</param>
 /// <param name="CreatedAt">When the track was added to the library.</param>
+/// <param name="DownloadProblem">Why YouTube refused the last download, until one succeeds (PremiumOnly, Private, Unavailable, AgeRestricted, RegionBlocked, Failed).</param>
 public sealed record TrackResponse(
     Guid Id,
     string Title,
@@ -19,7 +20,8 @@ public sealed record TrackResponse(
     bool IsAvailableOffline,
     AudioCodec? Codec,
     string? YouTubeVideoId,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    DownloadRefusal? DownloadProblem);
 
 /// <summary>Hand-written mapping, shared by this feature's use cases. No AutoMapper.</summary>
 internal static class TrackMapping
@@ -32,5 +34,6 @@ internal static class TrackMapping
         track.IsAvailableOffline,
         track.LocalFile?.Quality.Codec,
         track.YouTubeVideoId?.Value,
-        track.CreatedAt);
+        track.CreatedAt,
+        track.DownloadProblem?.Reason);
 }

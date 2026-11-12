@@ -21,8 +21,10 @@ internal static class YouTubeMusicFeature
         // Streaming: yt-dlp fetches YouTube audio into a size-capped cache that is served as files.
         services.AddSingleton<YouTubeAudioCache>();
 
-        // Downloads: an in-memory queue drained by one background worker.
-        services.AddSingleton<DownloadQueue>();
+        // Downloads: jobs stored in Postgres, taken one at a time (under a lease) by one background
+        // worker; a Channel-based doorbell wakes it when jobs are queued.
+        services.AddSingleton<DownloadDoorbell>();
+        services.AddSingleton<DownloadPauses>();
         services.AddHostedService<DownloadWorker>();
 
         services.AddValidator<SearchYouTubeMusicRequest, SearchYouTubeMusicRequestValidator>();
@@ -31,6 +33,9 @@ internal static class YouTubeMusicFeature
 
         services.AddQuery<SearchYouTubeMusicQuery, SearchYouTubeMusicResult, SearchYouTubeMusicHandler>();
         services.AddCommand<DownloadTrackCommand, DownloadTrackResult, DownloadTrackHandler>();
+        services.AddCommand<QueueDownloadsCommand, QueueDownloadsResult, QueueDownloadsHandler>();
+        services.AddCommand<QueuePlaylistDownloadsCommand, QueuePlaylistDownloadsResult, QueuePlaylistDownloadsHandler>();
+        services.AddQuery<ListDownloadsQuery, DownloadsResponse, ListDownloadsHandler>();
         services.AddCommand<ImportPlaylistCommand, ImportPlaylistResult, ImportPlaylistHandler>();
     }
 

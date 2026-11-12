@@ -27,6 +27,9 @@ public sealed class Track : AuditableEntity<TrackId>
 
     public bool IsAvailableOffline => LocalFile is not null;
 
+    /// <summary>Why the last download attempt failed, if it did and none has worked since.</summary>
+    public DownloadProblem? DownloadProblem { get; private set; }
+
     public static Validated<Track> Create(string title, ArtistId artistId, TimeSpan duration, LocalFile? localFile, YouTubeVideoId? youTubeVideoId)
     {
         var trimmed = title.Trim();
@@ -49,7 +52,14 @@ public sealed class Track : AuditableEntity<TrackId>
     }
 
     /// <summary>A YouTube track was downloaded: it is now playable offline too.</summary>
-    public void AttachLocalFile(LocalFile file) => LocalFile = file;
+    public void AttachLocalFile(LocalFile file)
+    {
+        LocalFile = file;
+        DownloadProblem = null;
+    }
+
+    /// <summary>A download was refused; remembered so it can be shown, and retried later on purpose.</summary>
+    public void RecordDownloadProblem(DownloadProblem problem) => DownloadProblem = problem;
 
     /// <summary>A local file was matched to YouTube Music, for metadata and artwork.</summary>
     public void LinkYouTube(YouTubeVideoId videoId) => YouTubeVideoId = videoId;

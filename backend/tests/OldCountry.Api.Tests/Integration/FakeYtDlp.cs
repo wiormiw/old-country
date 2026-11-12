@@ -32,10 +32,29 @@ internal sealed class FakeYtDlp : IYtDlp
     public Task<string> FetchAudioAsync(YouTubeVideoId videoId, string folder, CancellationToken cancellationToken) =>
         Task.FromResult(TestAudio.WriteSilentWav(folder, $"{videoId.Value}.wav"));
 
+    /// <summary>A video only Music Premium members may play: downloading it is refused.</summary>
+    public static readonly YtVideo PremiumOnly = new(new YouTubeVideoId("premiumSong"), "Premium Song", "Fake Artist", TimeSpan.FromSeconds(2), null);
+
+    /// <summary>Videos (by id) that answer "429 Too Many Requests" this many more times before downloading.</summary>
+    public ConcurrentDictionary<string, int> RateLimitedTimes { get; } = new();
+
     public Task<YtDownload> DownloadAudioAsync(YouTubeVideoId videoId, string folder, CancellationToken cancellationToken)
     {
-        var video = videoId == Song.Id ? Song : Other;
+        if (videoId == PremiumOnly.Id)
+            throw new YtDlpException(YouTubeRefusals.PremiumOnly, $"[youtube] {videoId}: This video is only available to Music Premium members");
+        if (RateLimitedTimes.TryGetValue(videoId.Value, out var times) && times > 0)
+        {
+            RateLimitedTimes[videoId.Value] = times - 1;
+            throw new YtDlpException(YouTubeRefusals.RateLimited, "unable to download video data: HTTP Error 429: Too Many Requests");
+        }
+
+        var video = Known(videoId);
         var path = TestAudio.WriteSilentWav(Path.Combine(folder, "Fake Artist"), $"{video.Title} [{videoId.Value}].wav", seconds: 3);
         return Task.FromResult(new YtDownload(path, video with { Artist = "Fake Artist" }, 128, 8_000));
     }
+
+    /// <summary>The video with this id from the canned ones or any playlist a test set up.</summary>
+    private YtVideo Known(YouTubeVideoId id) =>
+        new[] { Song, Other, Third, PremiumOnly }.Concat(Playlists.Values.SelectMany(p => p.Entries)).FirstOrDefault(v => v.Id == id)
+        ?? new YtVideo(id, $"Video {id}", "Fake Artist", TimeSpan.FromSeconds(2), null);
 }

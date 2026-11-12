@@ -67,5 +67,27 @@ internal sealed class TrackConfiguration : IEntityTypeConfiguration<Track>
             file.Property(f => f.Path).HasMaxLength(4096);
             file.ComplexProperty(f => f.Quality);
         });
+
+        // Same for the last refused download: download_problem_reason, _message, _at.
+        builder.ComplexProperty(track => track.DownloadProblem, problem =>
+            problem.Property(p => p.Message).HasMaxLength(DownloadProblem.MessageMaxLength));
+    }
+}
+
+internal sealed class DownloadJobConfiguration : IEntityTypeConfiguration<DownloadJob>
+{
+    public void Configure(EntityTypeBuilder<DownloadJob> builder)
+    {
+        builder.HasKey(job => job.Id);
+        builder.Property(job => job.Id).ValueGeneratedNever();
+        builder.Property(job => job.VideoId).HasColumnName("youtube_video_id");
+        builder.Property(job => job.ErrorCode).HasMaxLength(64);
+        builder.Property(job => job.Error).HasMaxLength(2000);
+        builder.Ignore(job => job.IsActive);
+
+        // The worker's lookup: the oldest claimable job.
+        builder.HasIndex(job => new { job.State, job.QueuedAt });
+        // A video is queued or running at most once; asking again joins the job already there.
+        builder.HasIndex(job => job.VideoId).IsUnique().HasFilter("state IN ('Queued', 'Running')");
     }
 }

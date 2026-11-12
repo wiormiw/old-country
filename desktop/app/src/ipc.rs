@@ -4,7 +4,7 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use shared::{
-    AppError, DownloadStatus, ImportReport, Paged, PlayerState, Playlist, PlaylistSummary, QueueItem, RepeatMode,
+    AppError, DownloadStatus, Downloads, ImportReport, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, RepeatMode,
     ScanStatus, Settings, Track, TrackDetail, YouTubeResult,
 };
 use wasm_bindgen::prelude::*;
@@ -161,8 +161,12 @@ pub async fn youtube_download(video_ids: Vec<String>) -> Result<Vec<DownloadStat
     call("youtube_download", args!(video_ids: Vec<String> = video_ids)).await
 }
 
-pub async fn youtube_downloads() -> Result<Vec<DownloadStatus>, AppError> {
+pub async fn youtube_downloads() -> Result<Downloads, AppError> {
     call("youtube_downloads", NoArgs {}).await
+}
+
+pub async fn download_playlist(id: String, retry_skipped: bool) -> Result<PlaylistDownloadReport, AppError> {
+    call("download_playlist", args!(id: String = id, retry_skipped: bool = retry_skipped)).await
 }
 
 pub async fn youtube_import(playlist: String) -> Result<ImportReport, AppError> {

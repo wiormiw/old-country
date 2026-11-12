@@ -51,3 +51,35 @@ public readonly record struct YouTubeVideoId(string Value)
 
     public override string ToString() => Value;
 }
+
+/// <summary>Why YouTube wouldn't give a video's audio.</summary>
+public enum DownloadRefusal
+{
+    /// <summary>Only Music Premium members may play it; works again with Premium cookies.</summary>
+    PremiumOnly,
+    /// <summary>The uploader made it private.</summary>
+    Private,
+    /// <summary>Removed, or never existed.</summary>
+    Unavailable,
+    /// <summary>Needs a signed-in, age-verified account.</summary>
+    AgeRestricted,
+    /// <summary>Not offered in the server's country.</summary>
+    RegionBlocked,
+    /// <summary>Anything else; may work on a later try.</summary>
+    Failed,
+}
+
+/// <summary>The last time a track couldn't be downloaded, and why. Cleared when a download succeeds.</summary>
+public sealed record DownloadProblem(DownloadRefusal Reason, string Message, DateTimeOffset At)
+{
+    public const int MessageMaxLength = 1000;
+
+    /// <summary>
+    /// Refusals that won't change by trying again soon (Premium, private, removed, age, region):
+    /// "download all" leaves these songs out unless asked to retry them.
+    /// </summary>
+    public bool IsLasting => Reason is not DownloadRefusal.Failed;
+
+    public static DownloadProblem Of(DownloadRefusal reason, string message, DateTimeOffset at) =>
+        new(reason, message.Length <= MessageMaxLength ? message : message[..MessageMaxLength], at);
+}

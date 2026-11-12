@@ -17,10 +17,13 @@ internal static class ValueObjectConverters
         builder.Properties<TrackId>().HaveConversion<TrackIdConverter>();
         builder.Properties<ArtistId>().HaveConversion<ArtistIdConverter>();
         builder.Properties<PlaylistId>().HaveConversion<PlaylistIdConverter>();
+        builder.Properties<DownloadJobId>().HaveConversion<DownloadJobIdConverter>();
         builder.Properties<YouTubeVideoId>().HaveConversion<YouTubeVideoIdConverter>().HaveMaxLength(YouTubeVideoId.Length);
         // Postgres stores timestamptz as UTC and Npgsql refuses any other offset.
         builder.Properties<DateTimeOffset>().HaveConversion<UtcConverter>();
         builder.Properties<AudioCodec>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<DownloadRefusal>().HaveConversion<string>().HaveMaxLength(16);
+        builder.Properties<DownloadJobState>().HaveConversion<string>().HaveMaxLength(16);
     }
 
     private sealed class TrackIdConverter() : ValueConverter<TrackId, Guid>(id => id.Value, value => new TrackId(value));
@@ -28,6 +31,8 @@ internal static class ValueObjectConverters
     private sealed class ArtistIdConverter() : ValueConverter<ArtistId, Guid>(id => id.Value, value => new ArtistId(value));
 
     private sealed class PlaylistIdConverter() : ValueConverter<PlaylistId, Guid>(id => id.Value, value => new PlaylistId(value));
+
+    private sealed class DownloadJobIdConverter() : ValueConverter<DownloadJobId, Guid>(id => id.Value, value => new DownloadJobId(value));
 
     private sealed class YouTubeVideoIdConverter() : ValueConverter<YouTubeVideoId, string>(id => id.Value, value => new YouTubeVideoId(value));
 

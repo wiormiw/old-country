@@ -85,6 +85,8 @@ Migrations run on startup in Development. The API's OpenAPI document is at `/ope
 | `YouTubeMusic:AudioFormat` | `opus` | `opus`, `m4a`, `mp3` or `flac` |
 | `YouTubeMusic:StreamCacheFolder` | system temp | Cache for YouTube audio being played |
 | `YouTubeMusic:StreamCacheMaxMegabytes` | `2048` | Least recently played files are evicted first |
+| `YouTubeMusic:DownloadPause` | `00:00:05` | Wait between one download and the next |
+| `YouTubeMusic:RateLimitPause` | `00:15:00` | How long downloads rest when YouTube rate limits; doubles if it happens again in a row (up to 8x) |
 
 Bad configuration stops the server at startup with a message naming the setting.
 
@@ -193,7 +195,7 @@ tail -f ~/.local/share/dev.wiormiw.oldcountry/logs/old-country.log
 | Tracks | `POST /api/tracks`, `GET /api/tracks`, `GET /api/tracks/{id}`, `GET /api/tracks/{id}/audio` |
 | Library scans | `POST /api/tracks/scans`, `GET /api/tracks/scans/latest` |
 | Playlists | `POST/GET /api/playlists`, `GET/PUT/DELETE /api/playlists/{id}`, `POST /api/playlists/{id}/tracks`, `DELETE /api/playlists/{id}/tracks/{position}`, `POST /api/playlists/{id}/tracks/move` |
-| YouTube Music | `GET /api/youtube-music/search`, `GET /api/youtube-music/videos/{videoId}/audio`, `POST/GET /api/youtube-music/downloads`, `POST /api/youtube-music/imports` |
+| YouTube Music | `GET /api/youtube-music/search`, `GET /api/youtube-music/videos/{videoId}/audio`, `POST/GET /api/youtube-music/downloads`, `POST /api/youtube-music/playlists/{id}/downloads`, `POST /api/youtube-music/imports` |
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details with a stable `code` field (`track.not_found`, `validation`, `youtube.failed`, ...).
 
@@ -223,6 +225,14 @@ backend/
 ### YouTube Music notes
 
 Everything goes through yt-dlp, run as a child process with a timeout. Playing a YouTube track fetches its audio into a size-capped cache and serves the file, rather than relaying YouTube's stream URLs: those are bound to the resolving IP, reject the HTTP `Range` header, and for some clients are refused unless fetched exactly as yt-dlp does (tested Nov 2026).
+
+**Downloads** go into the library folder, as ordinary files: `<first Library:Roots folder>/YouTube Music/<artist>/<title> [<video id>].opus`. The library scan sees them like any other music, and they keep playing whatever happens to your YouTube account. On a server, that's the server's disk, or a NAS mounted there.
+
+The download queue is a table in Postgres, worked through one song at a time by a background worker:
+
+- **Survives restarts.** Queued songs stay queued. A song interrupted by a normal shutdown goes back in the queue; one interrupted by a crash is taken again when its *lease* runs out (a worker owns a song for twice the yt-dlp timeout plus two minutes). A song that never finishes is given up after 3 tries.
+- **Easy on YouTube.** A pause between songs, and when YouTube rate limits ("429", "confirm you're not a bot") the whole queue rests and resumes by itself. The Downloads page says until when.
+- **Remembers refusals.** A song YouTube won't give (Premium only, private, removed, age or region restricted) is marked on the track. "Download all" on a playlist skips those; "Retry skipped" tries them again, e.g. after getting Premium or adding cookies.
 
 Keeping YouTube playback steady:
 

@@ -4,11 +4,11 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map};
 use shared::timespan::display;
-use shared::{AppError, Playlist};
+use shared::{AppError, Playlist, PlaylistDownloadReport, PlaylistEntry};
 
 use crate::components::{ErrorView, Loading};
 use crate::ipc;
-use crate::state::{entry_item, use_notice};
+use crate::state::{entry_item, is_lasting_problem, problem_label, use_notice};
 
 #[component]
 pub fn Playlists() -> impl IntoView {
@@ -110,8 +110,60 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
     let opening = RwSignal::new(true);
     set_timeout(move || opening.set(false), Duration::from_millis(700));
 
+    // Downloading: what's left to get, what YouTube refused before, and live progress.
+    let to_get = Memo::new(move |_| distinct_songs(&entries.get(), needs_download));
+    let skipped = Memo::new(move |_| distinct_songs(&entries.get(), |e| {
+        !e.is_available_offline && e.download_problem.as_deref().is_some_and(is_lasting_problem)
+    }));
+    let downloaded = Memo::new(move |_| distinct_songs(&entries.get(), |e| e.is_available_offline));
+    let songs = Memo::new(move |_| distinct_songs(&entries.get(), |_| true));
+    let queueing = RwSignal::new(false);
+    let watching = RwSignal::new(false);
+    let only_missing = RwSignal::new(false);
+
+    let download_all = move |retry_skipped: bool| {
+        queueing.set(true);
+        leptos::task::spawn_local(async move {
+            match ipc::download_playlist(id.get_value(), retry_skipped).await {
+                Ok(report) => {
+                    notice.info(download_message(&report));
+                    watching.set(report.queued + report.already_queued > 0);
+                }
+                Err(e) => notice.error(e.message),
+            }
+            queueing.set(false);
+        });
+    };
+
+    // While downloads run, refresh which songs are offline (and which YouTube refused) every few
+    // seconds; stop once nothing has changed for a while.
+    let unchanged = StoredValue::new(0u32);
+    let poll = set_interval_with_handle(
+        move || {
+            if !watching.get_untracked() || changing.get_untracked() {
+                return;
+            }
+            leptos::task::spawn_local(async move {
+                let Ok(fresh) = ipc::get_playlist(id.get_value()).await else { return };
+                let changed = entries.try_update(|list| merge_download_flags(list, &fresh.entries)).unwrap_or(false);
+                unchanged.update_value(|n| *n = if changed { 0 } else { *n + 1 });
+                if to_get.get_untracked() == 0 || unchanged.get_value() >= WATCH_IDLE_POLLS {
+                    watching.set(false);
+                    unchanged.set_value(0);
+                }
+            });
+        },
+        Duration::from_secs(4),
+    )
+    .ok();
+    on_cleanup(move || {
+        if let Some(poll) = poll {
+            poll.clear();
+        }
+    });
+
     let filter = RwSignal::new(String::new());
-    let filtering = move || !filter.with(|f| f.trim().is_empty());
+    let filtering = move || !filter.with(|f| f.trim().is_empty()) || only_missing.get();
     let matches = move |title: &str, artist: &str| {
         filter.with(|f| {
             let f = f.trim().to_lowercase();
@@ -210,12 +262,33 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
                 <h1>{playlist.name.clone()}</h1>
                 <p class="muted">{move || entries.with(|list| {
                     format!("{} tracks · {}", list.len(), display(list.iter().map(|e| e.duration).sum::<f64>()))
-                })}</p>
+                })}
+                    {move || (songs.get() > 0).then(|| view! {
+                        <span class:downloading=move || watching.get()>
+                            {format!(" · {} of {} downloaded", downloaded.get(), songs.get())}
+                        </span>
+                    })}
+                </p>
                 {playlist.description.clone().map(|d| view! { <p>{d}</p> })}
             </div>
             <div class="actions">
                 <button class="primary" prop:disabled=move || empty.get()
                     on:click=move |_| leptos::task::spawn_local(ipc::play(queue(), 0))>"▶ Play all"</button>
+                <button class="ghost" aria-busy=move || queueing.get().to_string()
+                    prop:disabled=move || { queueing.get() || to_get.get() == 0 }
+                    title="Download the songs that aren't on this computer's server yet, one after another"
+                    on:click=move |_| download_all(false)>
+                    {move || match to_get.get() {
+                        0 if skipped.get() == 0 => "✓ All downloaded".to_owned(),
+                        0 => "⤓ Nothing more to get".to_owned(),
+                        n => format!("⤓ Download all ({n})"),
+                    }}
+                </button>
+                {move || (skipped.get() > 0).then(|| view! {
+                    <button class="ghost" prop:disabled=move || queueing.get()
+                        title="Try again the songs YouTube refused before (Premium only, private...), e.g. after getting Premium"
+                        on:click=move |_| download_all(true)>{format!("↻ Retry skipped ({})", skipped.get())}</button>
+                })}
                 <button class="ghost" class:active=move || editing.get() on:click=move |_| editing.update(|e| *e = !*e)>"Edit"</button>
                 {move || if confirm_delete.get() {
                     view! {
@@ -243,7 +316,11 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
         <Show when=move || !empty.get() fallback=|| view! {
             <p class="muted">"This playlist is empty. Add tracks from the Library."</p>
         }>
-            <input type="search" class="search" placeholder="Find in this playlist" aria-label="Find in this playlist" bind:value=filter />
+            <div class="list-tools">
+                <input type="search" class="search" placeholder="Find in this playlist" aria-label="Find in this playlist" bind:value=filter />
+                <button class="ghost small" class:active=move || only_missing.get() aria-pressed=move || only_missing.get().to_string()
+                    on:click=move |_| only_missing.update(|m| *m = !*m)>"Not downloaded"</button>
+            </div>
             <table class="tracks" class:appear=move || opening.get()>
                 <thead><tr><th class="col-num">"#"</th><th>"Title"</th><th class="col-artist">"Artist"</th><th class="col-time">"Time"</th><th class="col-actions"></th></tr></thead>
                 <tbody>
@@ -251,17 +328,22 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
                         let count = entries.with(Vec::len);
                         entries.get().into_iter().enumerate().map(|(i, entry)| {
                             let (title, artist) = (entry.title.clone(), entry.artist.clone());
+                            let offline = entry.is_available_offline;
+                            let problem = entry.download_problem.clone().filter(|_| !offline);
                             view! {
                                 <tr class:unavailable=!entry.is_available_offline && entry.you_tube_video_id.is_none()
                                     class=move || slide(i).unwrap_or_default()
                                     class:leaving=move || leaving.get() == Some(i)
-                                    style:display=move || if matches(&title, &artist) { "" } else { "none" }>
+                                    style:display=move || if matches(&title, &artist) && !(only_missing.get() && offline) { "" } else { "none" }>
                                     <td class="col-num">
                                         <button class="icon row-play" aria-label="Play"
                                             on:click=move |_| leptos::task::spawn_local(ipc::play(queue(), i))>"▶"</button>
                                     </td>
                                     <td class="col-title">
                                         <A href=format!("/tracks/{}", entry.track_id) attr:class="title-link">{entry.title.clone()}</A>
+                                        {problem.map(|p| view! {
+                                            <span class="badge badge-error problem" title="YouTube refused the last download">{problem_label(&p)}</span>
+                                        })}
                                         <span class="sub-artist">{entry.artist.clone()}</span>
                                     </td>
                                     <td class="muted col-artist">{entry.artist.clone()}</td>
@@ -282,4 +364,52 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
             </table>
         </Show>
     }
+}
+
+/// Polls with no change before the playlist stops watching its downloads.
+const WATCH_IDLE_POLLS: u32 = 8;
+
+/// A song worth queueing: on YouTube, not downloaded, and not refused for a lasting reason.
+fn needs_download(entry: &PlaylistEntry) -> bool {
+    !entry.is_available_offline
+        && entry.you_tube_video_id.is_some()
+        && !entry.download_problem.as_deref().is_some_and(is_lasting_problem)
+}
+
+/// How many different songs match (a song can be in a playlist more than once).
+fn distinct_songs(entries: &[PlaylistEntry], keep: impl Fn(&PlaylistEntry) -> bool) -> usize {
+    entries.iter().filter(|e| keep(e)).map(|e| e.track_id.as_str()).collect::<std::collections::HashSet<_>>().len()
+}
+
+/// Copies the server's offline flags and download problems onto the rows shown, by track, leaving
+/// their order alone (the user may be reordering). `true` when anything changed.
+fn merge_download_flags(shown: &mut [PlaylistEntry], fresh: &[PlaylistEntry]) -> bool {
+    let latest: std::collections::HashMap<_, _> =
+        fresh.iter().map(|e| (e.track_id.as_str(), (e.is_available_offline, e.download_problem.clone()))).collect();
+    let mut changed = false;
+    for entry in shown.iter_mut() {
+        if let Some((offline, problem)) = latest.get(entry.track_id.as_str())
+            && (entry.is_available_offline != *offline || entry.download_problem != *problem)
+        {
+            entry.is_available_offline = *offline;
+            entry.download_problem = problem.clone();
+            changed = true;
+        }
+    }
+    changed
+}
+
+fn download_message(report: &PlaylistDownloadReport) -> String {
+    let mut parts = vec![match report.queued {
+        0 => "Nothing new to download".to_owned(),
+        1 => "1 song queued for download".to_owned(),
+        n => format!("{n} songs queued for download"),
+    }];
+    if report.already_queued > 0 {
+        parts.push(format!("{} already on the way", report.already_queued));
+    }
+    if report.skipped > 0 {
+        parts.push(format!("{} skipped (refused by YouTube before; use Retry skipped)", report.skipped));
+    }
+    format!("{}. See Downloads for progress.", parts.join(", "))
 }

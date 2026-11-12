@@ -572,3 +572,28 @@ button[aria-busy="true"]::before {
   }
   .skeleton-row { animation: none !important; }
 }
+
+/* ---------- Downloads ---------- */
+
+/* A notice across the page: the download queue is resting. */
+.banner {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: rgb(201 162 39 / 0.12);
+  animation: rise-in 220ms var(--ease-out) both;
+}
+.banner strong { margin-right: 6px; }
+
+/* The search box with a filter beside it. */
+.list-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.list-tools .search { margin-bottom: 0; flex: 1 1 260px; }
+
+/* Why a song couldn't be downloaded, beside its title. */
+.badge.problem { margin-left: 8px; vertical-align: 1px; font-size: 11px; }
+
+/* The "N of M downloaded" count breathes while downloads run. */
+.downloading { animation: breathe 1.6s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .downloading { animation: none !important; } }

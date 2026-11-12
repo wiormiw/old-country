@@ -50,6 +50,7 @@ public sealed record PlaylistSummaryResponse(
 /// <param name="IsAvailableOffline">Whether the track has a local file.</param>
 /// <param name="YouTubeVideoId">The YouTube Music video id, when the track exists there; lets clients stream tracks without a local file.</param>
 /// <param name="AddedAt">When the track was added to this playlist.</param>
+/// <param name="DownloadProblem">Why YouTube refused the track's last download, until one succeeds.</param>
 public sealed record PlaylistEntryResponse(
     int Position,
     Guid TrackId,
@@ -58,7 +59,8 @@ public sealed record PlaylistEntryResponse(
     TimeSpan Duration,
     bool IsAvailableOffline,
     string? YouTubeVideoId,
-    DateTimeOffset AddedAt);
+    DateTimeOffset AddedAt,
+    DownloadRefusal? DownloadProblem);
 
 /// <summary>A playlist with its tracks in order.</summary>
 /// <param name="Id">The playlist's id.</param>

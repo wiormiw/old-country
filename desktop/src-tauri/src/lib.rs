@@ -118,6 +118,7 @@ pub fn run() {
             commands::youtube_search,
             commands::youtube_download,
             commands::youtube_downloads,
+            commands::download_playlist,
             commands::youtube_import,
             commands::player_state,
             commands::player_play,

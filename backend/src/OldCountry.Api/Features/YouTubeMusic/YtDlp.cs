@@ -95,9 +95,10 @@ internal sealed partial class YtDlpProcess(IOptions<YouTubeMusicOptions> options
     }
 
     /// <summary>
-    /// Runs yt-dlp, retrying once after a short pause when it fails: YouTube refuses requests now
-    /// and then (throttling, a stale player script) and a second try usually works. A missing
-    /// binary or a timeout isn't retried.
+    /// Runs yt-dlp, retrying once after a short pause when it fails for no stated reason: YouTube
+    /// refuses requests now and then (a stale player script, a dropped connection) and a second
+    /// try usually works. A missing binary, a timeout, or a refusal with a reason (Premium only,
+    /// private, rate limited...) isn't retried: trying again wouldn't change the answer.
     /// </summary>
     private async Task<string> RunAsync(string operation, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
@@ -105,7 +106,7 @@ internal sealed partial class YtDlpProcess(IOptions<YouTubeMusicOptions> options
         {
             return await RunOnceAsync(operation, arguments, cancellationToken);
         }
-        catch (YtDlpException exception) when (exception.Code == "youtube.failed")
+        catch (YtDlpException exception) when (exception.Code == YouTubeRefusals.Failed)
         {
             Log.Retrying(logger, operation, exception.Message);
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
@@ -176,7 +177,7 @@ internal sealed partial class YtDlpProcess(IOptions<YouTubeMusicOptions> options
             {
                 var reason = YtDlpJson.SummarizeError(error);
                 Log.Failed(logger, operation, process.ExitCode, reason);
-                throw new YtDlpException("youtube.failed", reason);
+                throw new YtDlpException(YouTubeRefusals.Classify(reason), reason);
             }
 
             var elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;

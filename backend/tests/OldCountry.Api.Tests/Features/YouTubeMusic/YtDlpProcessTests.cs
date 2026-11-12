@@ -59,13 +59,13 @@ public sealed class YtDlpProcessTests : IDisposable
     }
 
     [Fact]
-    public async Task A_non_zero_exit_becomes_a_failed_error_with_yt_dlps_reason()
+    public async Task A_non_zero_exit_becomes_an_error_with_yt_dlps_reason_and_what_kind_of_refusal_it_is()
     {
         var ytDlp = WithScript("""echo "ERROR: [youtube] abc: Video unavailable" >&2; exit 1""");
 
         var error = await Should.ThrowAsync<YtDlpException>(() => ytDlp.SearchAsync("x", 1, Ct));
 
-        error.Code.ShouldBe("youtube.failed");
+        error.Code.ShouldBe("youtube.unavailable");
         error.Message.ShouldBe("[youtube] abc: Video unavailable");
     }
 

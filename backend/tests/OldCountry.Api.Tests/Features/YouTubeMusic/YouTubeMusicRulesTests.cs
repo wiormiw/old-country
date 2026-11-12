@@ -73,22 +73,59 @@ public sealed class YouTubeMusicRulesTests : IDisposable
     public void Without_a_library_there_is_nowhere_to_download() =>
         new YouTubeMusicOptions().ResolveDownloadFolder(new LibraryOptions()).Value.ShouldBeOfType<ValidationError>();
 
+    [Theory]
+    [InlineData("[youtube] SxXfA-g9SQc: This video is only available to Music Premium members", YouTubeRefusals.PremiumOnly)]
+    [InlineData("[youtube] abc: Private video. Sign in if you've been granted access to this video", YouTubeRefusals.Private)]
+    [InlineData("[youtube] abc: Video unavailable. This video has been removed by the uploader", YouTubeRefusals.Unavailable)]
+    [InlineData("[youtube] abc: Sign in to confirm your age. This video may be inappropriate for some users.", YouTubeRefusals.AgeRestricted)]
+    [InlineData("[youtube] abc: The uploader has not made this video available in your country", YouTubeRefusals.RegionBlocked)]
+    [InlineData("[youtube] abc: Video unavailable. This video is not available in your country", YouTubeRefusals.RegionBlocked)]
+    [InlineData("[youtube] abc: Sign in to confirm you’re not a bot", YouTubeRefusals.RateLimited)]
+    [InlineData("unable to download video data: HTTP Error 429: Too Many Requests", YouTubeRefusals.RateLimited)]
+    [InlineData("unable to download video data: HTTP Error 403: Forbidden", YouTubeRefusals.Failed)]
+    public void Youtube_refusals_are_classified_by_what_yt_dlp_says(string reason, string code) =>
+        YouTubeRefusals.Classify(reason).ShouldBe(code);
+
     [Fact]
-    public void The_download_queue_tracks_each_job_through_to_completion()
+    public void Only_refusals_about_the_video_are_remembered_on_the_track()
     {
-        var queue = new DownloadQueue(TimeProvider.System);
+        YouTubeRefusals.RefusalOf(YouTubeRefusals.PremiumOnly).ShouldBe(DownloadRefusal.PremiumOnly);
+        YouTubeRefusals.RefusalOf(YouTubeRefusals.Failed).ShouldBe(DownloadRefusal.Failed);
+        YouTubeRefusals.RefusalOf(YouTubeRefusals.RateLimited).ShouldBeNull();
+        YouTubeRefusals.RefusalOf("youtube.ytdlp_missing").ShouldBeNull();
+        YouTubeRefusals.RefusalOf("youtube.timeout").ShouldBeNull();
+    }
 
-        var job = queue.Enqueue(new YouTubeVideoId("dQw4w9WgXcQ"));
-        queue.Pending.TryRead(out var pending).ShouldBeTrue();
-        pending.ShouldBe(job);
+    [Fact]
+    public void Rate_limits_in_a_row_double_the_rest_up_to_eight_times_and_a_success_resets_it()
+    {
+        var pauses = new DownloadPauses();
+        var now = new DateTimeOffset(2026, 11, 13, 12, 0, 0, TimeSpan.Zero);
+        var rest = TimeSpan.FromMinutes(15);
 
-        var trackId = Guid.CreateVersion7();
-        queue.Finish(job, trackId, error: null);
+        TimeSpan[] waits = [.. Enumerable.Range(0, 5).Select(_ => pauses.RateLimited(now, rest, "429") - now)];
 
-        var done = queue.Recent().ShouldHaveSingleItem();
-        done.State.ShouldBe(DownloadState.Completed);
-        done.TrackId.ShouldBe(trackId);
-        done.FinishedAt.ShouldNotBeNull();
+        waits.ShouldBe([rest, rest * 2, rest * 4, rest * 8, rest * 8]);
+        pauses.Remaining(now).ShouldBe(rest * 8);
+        pauses.Succeeded();
+        pauses.Remaining(now).ShouldBeNull();
+        (pauses.RateLimited(now, rest, "429") - now).ShouldBe(rest);
+    }
+
+    [Fact]
+    public async Task The_doorbell_wakes_the_worker_at_once_and_otherwise_times_out()
+    {
+        var doorbell = new DownloadDoorbell();
+        doorbell.Ring();
+        doorbell.Ring();   // rings while nobody listens fold into one
+
+        var rung = System.Diagnostics.Stopwatch.StartNew();
+        await doorbell.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        rung.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(1));
+
+        var quiet = System.Diagnostics.Stopwatch.StartNew();
+        await doorbell.WaitAsync(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken);
+        quiet.Elapsed.ShouldBeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(150));
     }
 
     [Fact]

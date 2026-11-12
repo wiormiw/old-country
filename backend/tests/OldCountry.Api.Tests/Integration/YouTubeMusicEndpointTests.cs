@@ -10,6 +10,7 @@ using OldCountry.Api.Features.Tracks.GetTrack;
 using OldCountry.Api.Features.YouTubeMusic.DownloadTracks;
 using OldCountry.Api.Features.YouTubeMusic.ImportPlaylist;
 using OldCountry.Api.Features.YouTubeMusic.SearchYouTubeMusic;
+using OldCountry.Domain.Library;
 
 namespace OldCountry.Api.Tests.Integration;
 
@@ -191,12 +192,129 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
         (await client.GetAsync($"/api/tracks/{track.Id}/audio", Ct)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
+    [Fact]
+    public async Task Downloading_a_playlist_gets_what_is_missing_and_remembers_what_youtube_refused()
+    {
+        using var client = factory.CreateApiClient();
+        var youTube = (FakeYtDlp)factory.Services.GetRequiredService<IYtDlp>();
+        YtVideo free = new(new("dlFreeSong1"), "Free Song", "Band", TimeSpan.FromSeconds(2), null);
+        youTube.Playlists["PLdownloadAll"] = new YtPlaylist("Download All", [free, FakeYtDlp.PremiumOnly]);
+        var imported = await Import(client, "PLdownloadAll");
+
+        var first = await DownloadPlaylist(client, imported.PlaylistId);
+        first.Queued.ShouldBe(2);
+        var jobs = await WaitForVideos(client, [free.Id.Value, FakeYtDlp.PremiumOnly.Id.Value]);
+        jobs[free.Id.Value].State.ShouldBe(DownloadState.Completed);
+        jobs[free.Id.Value].Title.ShouldBe("Free Song");
+        jobs[FakeYtDlp.PremiumOnly.Id.Value].State.ShouldBe(DownloadState.Failed);
+        jobs[FakeYtDlp.PremiumOnly.Id.Value].ErrorCode.ShouldBe("youtube.premium_only");
+
+        // The refusal stays on the song, so the app can show it after the download list is gone.
+        var playlist = (await client.GetFromJsonAsync<PlaylistResponse>($"/api/playlists/{imported.PlaylistId}", Json, Ct)).ShouldNotBeNull();
+        playlist.Entries.Single(e => e.Title == "Free Song").IsAvailableOffline.ShouldBeTrue();
+        playlist.Entries.Single(e => e.Title == "Premium Song").DownloadProblem.ShouldBe(DownloadRefusal.PremiumOnly);
+
+        // Asking again: nothing left to get, and the Premium-only song is skipped, not retried...
+        var again = await DownloadPlaylist(client, imported.PlaylistId);
+        (again.Queued, again.AlreadyDownloaded, again.Skipped).ShouldBe((0, 1, 1));
+
+        // ...until asked to retry skipped songs (after getting Premium, say).
+        (await DownloadPlaylist(client, imported.PlaylistId, retrySkipped: true)).Queued.ShouldBe(1);
+        await WaitForVideos(client, [FakeYtDlp.PremiumOnly.Id.Value]);
+    }
+
+    [Fact]
+    public async Task When_youtube_rate_limits_the_queue_rests_then_carries_on_without_counting_a_try()
+    {
+        using var client = factory.CreateApiClient();
+        var youTube = (FakeYtDlp)factory.Services.GetRequiredService<IYtDlp>();
+        youTube.RateLimitedTimes["rateLimit01"] = 1;
+
+        string[] videoIds = ["rateLimit01"];
+        (await client.PostAsJsonAsync("/api/youtube-music/downloads", new { videoIds }, Ct)).EnsureSuccessStatusCode();
+
+        var sawPause = false;
+        for (var i = 0; i < 100 && !sawPause; i++)
+        {
+            var downloads = (await client.GetFromJsonAsync<DownloadsResponse>("/api/youtube-music/downloads", Json, Ct)).ShouldNotBeNull();
+            sawPause = downloads.PausedUntil is not null && downloads.PauseReason!.Contains("429");
+            if (!sawPause) await Task.Delay(50, Ct);
+        }
+        sawPause.ShouldBeTrue("the queue should report that it is resting");
+
+        var done = (await WaitForVideos(client, ["rateLimit01"]))["rateLimit01"];
+        done.State.ShouldBe(DownloadState.Completed);
+        done.Attempts.ShouldBe(1, "the rate-limited try doesn't count against the video");
+    }
+
+    [Fact]
+    public async Task A_job_left_running_by_a_dead_worker_is_taken_over_once_its_lease_runs_out()
+    {
+        using var client = factory.CreateApiClient();
+        var past = DateTimeOffset.UtcNow.AddHours(-1);
+        var orphan = DownloadJob.Queue(new YouTubeVideoId("orphanSong1"), past);
+        orphan.Start(past, TimeSpan.FromMinutes(1)).ShouldBeTrue();   // "running" since an hour ago, lease long gone
+        await AddJobAndWake(orphan);
+
+        var done = (await WaitForVideos(client, ["orphanSong1"]))["orphanSong1"];
+        done.State.ShouldBe(DownloadState.Completed);
+        done.Attempts.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task A_job_that_never_finishes_is_given_up_after_three_tries()
+    {
+        using var client = factory.CreateApiClient();
+        var past = DateTimeOffset.UtcNow.AddHours(-1);
+        var stuck = DownloadJob.Queue(new YouTubeVideoId("stuckSong01"), past);
+        for (var attempt = 0; attempt < DownloadJob.MaxAttempts; attempt++)
+            stuck.Start(past.AddMinutes(attempt * 2), TimeSpan.FromMinutes(1)).ShouldBeTrue();
+        await AddJobAndWake(stuck);
+
+        var done = (await WaitForVideos(client, ["stuckSong01"]))["stuckSong01"];
+        done.State.ShouldBe(DownloadState.Failed);
+        done.ErrorCode.ShouldBe("download.gave_up");
+    }
+
+    private async Task AddJobAndWake(DownloadJob job)
+    {
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OldCountry.Api.Persistence.OldCountryDbContext>();
+            db.DownloadJobs.Add(job);
+            await db.SaveChangesAsync(Ct);
+        }
+        factory.Services.GetRequiredService<DownloadDoorbell>().Ring();
+    }
+
+    private static async Task<PlaylistDownloadReport> DownloadPlaylist(HttpClient client, Guid playlistId, bool retrySkipped = false)
+    {
+        var response = await client.PostAsJsonAsync($"/api/youtube-music/playlists/{playlistId}/downloads", new { retrySkipped }, Ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted, await response.Content.ReadAsStringAsync(Ct));
+        return (await response.Content.ReadFromJsonAsync<PlaylistDownloadReport>(Json, Ct)).ShouldNotBeNull();
+    }
+
+    /// <summary>Waits until the newest job of each video has finished; returns them by video id.</summary>
+    private static async Task<Dictionary<string, DownloadStatus>> WaitForVideos(HttpClient client, string[] videoIds)
+    {
+        for (var attempt = 0; attempt < 200; attempt++)
+        {
+            var downloads = await client.GetFromJsonAsync<DownloadsResponse>("/api/youtube-music/downloads", Json, Ct);
+            var newest = downloads!.Jobs.Where(j => videoIds.Contains(j.VideoId))
+                .GroupBy(j => j.VideoId).ToDictionary(g => g.Key, g => g.OrderByDescending(j => j.QueuedAt).First());
+            if (newest.Count == videoIds.Length && newest.Values.All(j => j.State is DownloadState.Completed or DownloadState.Failed))
+                return newest;
+            await Task.Delay(100, Ct);
+        }
+        throw new TimeoutException($"Downloads of {string.Join(", ", videoIds)} did not finish within 20 seconds.");
+    }
+
     private static async Task<DownloadStatus> WaitFor(HttpClient client, Guid jobId)
     {
         for (var attempt = 0; attempt < 100; attempt++)
         {
-            var jobs = await client.GetFromJsonAsync<List<DownloadStatus>>("/api/youtube-music/downloads", Json, Ct);
-            if (jobs?.SingleOrDefault(j => j.JobId == jobId) is { State: DownloadState.Completed or DownloadState.Failed } done) return done;
+            var downloads = await client.GetFromJsonAsync<DownloadsResponse>("/api/youtube-music/downloads", Json, Ct);
+            if (downloads?.Jobs.SingleOrDefault(j => j.JobId == jobId) is { State: DownloadState.Completed or DownloadState.Failed } done) return done;
             await Task.Delay(100, Ct);
         }
         throw new TimeoutException("The download did not finish within 10 seconds.");

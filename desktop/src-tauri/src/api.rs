@@ -7,7 +7,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::json;
 use shared::{
-    AppError, DownloadStatus, ImportReport, Paged, Playlist, PlaylistSummary, ProblemDetails, ScanStatus, Track,
+    AppError, DownloadStatus, Downloads, ImportReport, Paged, Playlist, PlaylistDownloadReport, PlaylistSummary, ProblemDetails,
+    ScanStatus, Track,
     TrackDetail, YouTubeResult,
 };
 
@@ -110,8 +111,15 @@ impl ApiClient {
         self.send(Method::POST, "/api/youtube-music/downloads", Some(json!({ "videoIds": video_ids }))).await
     }
 
-    pub async fn youtube_downloads(&self) -> Result<Vec<DownloadStatus>, AppError> {
+    pub async fn youtube_downloads(&self) -> Result<Downloads, AppError> {
         self.get("/api/youtube-music/downloads").await
+    }
+
+    /// Queues every song of a playlist that isn't downloaded yet (and, with `retry_skipped`, the
+    /// ones YouTube refused before).
+    pub async fn download_playlist(&self, id: &str, retry_skipped: bool) -> Result<PlaylistDownloadReport, AppError> {
+        self.send(Method::POST, &format!("/api/youtube-music/playlists/{id}/downloads"), Some(json!({ "retrySkipped": retry_skipped })))
+            .await
     }
 
     pub async fn youtube_import(&self, playlist: &str) -> Result<ImportReport, AppError> {

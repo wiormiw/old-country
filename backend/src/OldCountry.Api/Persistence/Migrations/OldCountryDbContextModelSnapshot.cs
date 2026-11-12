@@ -17,7 +17,7 @@ partial class OldCountryDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261112194135_LinkPlaylistsToYouTube";
+    public override string LastMigrationId => "20261112203304_PersistentDownloadQueue";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -62,6 +62,72 @@ partial class OldCountryDbContextModelSnapshot : ModelSnapshot
                     .HasDatabaseName("ix_artists_normalized_name");
 
                 b.ToTable("artists");
+            });
+
+        modelBuilder.Entity("OldCountry.Domain.Library.DownloadJob", b =>
+            {
+                b.Property<Guid>("Id")
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<int>("Attempts")
+                    .HasColumnType("integer")
+                    .HasColumnName("attempts");
+
+                b.Property<string>("Error")
+                    .HasMaxLength(2000)
+                    .HasColumnType("character varying(2000)")
+                    .HasColumnName("error");
+
+                b.Property<string>("ErrorCode")
+                    .HasMaxLength(64)
+                    .HasColumnType("character varying(64)")
+                    .HasColumnName("error_code");
+
+                b.Property<DateTimeOffset?>("FinishedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("finished_at");
+
+                b.Property<DateTimeOffset?>("LeaseUntil")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("lease_until");
+
+                b.Property<DateTimeOffset>("QueuedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("queued_at");
+
+                b.Property<DateTimeOffset?>("StartedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("started_at");
+
+                b.Property<string>("State")
+                    .IsRequired()
+                    .HasMaxLength(16)
+                    .HasColumnType("character varying(16)")
+                    .HasColumnName("state");
+
+                b.Property<Guid?>("TrackId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("track_id");
+
+                b.Property<string>("VideoId")
+                    .IsRequired()
+                    .HasMaxLength(11)
+                    .HasColumnType("character varying(11)")
+                    .HasColumnName("youtube_video_id");
+
+                b.HasKey("Id")
+                    .HasName("pk_download_jobs");
+
+                b.HasIndex("VideoId")
+                    .IsUnique()
+                    .HasDatabaseName("ix_download_jobs_youtube_video_id")
+                    .HasFilter("state IN ('Queued', 'Running')");
+
+                b.HasIndex("State", "QueuedAt")
+                    .HasDatabaseName("ix_download_jobs_state_queued_at");
+
+                b.ToTable("download_jobs");
             });
 
         modelBuilder.Entity("OldCountry.Domain.Library.Playlist", b =>
@@ -156,6 +222,25 @@ partial class OldCountryDbContextModelSnapshot : ModelSnapshot
                     .HasMaxLength(11)
                     .HasColumnType("character varying(11)")
                     .HasColumnName("youtube_video_id");
+
+                b.ComplexProperty(typeof(Dictionary<string, object>), "DownloadProblem", "OldCountry.Domain.Library.Track.DownloadProblem#DownloadProblem", b1 =>
+                    {
+                        b1.Property<DateTimeOffset>("At")
+                            .HasColumnType("timestamp with time zone")
+                            .HasColumnName("download_problem_at");
+
+                        b1.Property<string>("Message")
+                            .IsRequired()
+                            .HasMaxLength(1000)
+                            .HasColumnType("character varying(1000)")
+                            .HasColumnName("download_problem_message");
+
+                        b1.Property<string>("Reason")
+                            .IsRequired()
+                            .HasMaxLength(16)
+                            .HasColumnType("character varying(16)")
+                            .HasColumnName("download_problem_reason");
+                    });
 
                 b.ComplexProperty(typeof(Dictionary<string, object>), "LocalFile", "OldCountry.Domain.Library.Track.LocalFile#LocalFile", b1 =>
                     {

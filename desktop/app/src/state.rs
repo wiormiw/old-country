@@ -87,3 +87,36 @@ pub fn youtube_item(result: &YouTubeResult) -> QueueItem {
         duration: result.duration,
     }
 }
+
+// --- Download problems ---
+
+/// A short label for why YouTube refused a song's download (the server's `DownloadRefusal`).
+pub fn problem_label(reason: &str) -> &'static str {
+    match reason {
+        "PremiumOnly" => "Premium only",
+        "Private" => "Private",
+        "Unavailable" => "Removed",
+        "AgeRestricted" => "Age restricted",
+        "RegionBlocked" => "Not in your country",
+        _ => "Download failed",
+    }
+}
+
+/// Refusals that won't change by simply trying again; "Download all" skips these.
+pub fn is_lasting_problem(reason: &str) -> bool {
+    reason != "Failed"
+}
+
+/// The same label for a failed download job's error code (`youtube.premium_only`, ...).
+pub fn error_code_label(code: &str) -> Option<&'static str> {
+    Some(match code {
+        "youtube.premium_only" => "Premium only",
+        "youtube.private" => "Private",
+        "youtube.unavailable" => "Removed",
+        "youtube.age_restricted" => "Age restricted",
+        "youtube.region_blocked" => "Not in your country",
+        "youtube.rate_limited" => "YouTube asked to slow down",
+        "download.gave_up" => "Gave up after 3 tries",
+        _ => return None,
+    })
+}
