@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 use leptos_router::components::A;
-use shared::AppError;
+use shared::{AppError, RepeatMode};
 use shared::timespan::display;
 
 use crate::ipc;
@@ -92,11 +92,31 @@ pub fn NowPlaying() -> impl IntoView {
 
             <div class="np-center">
                 <div class="np-controls">
+                    <button class="icon toggle" aria-label="Shuffle"
+                        title=move || if player.with(|s| s.shuffle) { "Shuffle on: every song once before any repeats" } else { "Shuffle off" }
+                        class:active=move || player.with(|s| s.shuffle)
+                        on:click=move |_| {
+                            let on = !player.with_untracked(|s| s.shuffle);
+                            leptos::task::spawn_local(ipc::set_shuffle(on));
+                        }>"⇄"</button>
                     <button class="icon" aria-label="Previous" on:click=move |_| leptos::task::spawn_local(ipc::prev())>"⏮"</button>
                     <button class="icon play" aria-label="Play or pause" on:click=move |_| leptos::task::spawn_local(ipc::toggle())>
                         {move || if player.with(|s| s.buffering) { "…" } else if player.with(|s| s.playing) { "⏸" } else { "▶" }}
                     </button>
                     <button class="icon" aria-label="Next" on:click=move |_| leptos::task::spawn_local(ipc::next())>"⏭"</button>
+                    <button class="icon toggle" aria-label="Repeat"
+                        title={move || match player.with(|s| s.repeat) {
+                            RepeatMode::Off => "Repeat off",
+                            RepeatMode::All => "Repeat all",
+                            RepeatMode::One => "Repeat this song",
+                        }}
+                        class:active=move || player.with(|s| s.repeat) != RepeatMode::Off
+                        on:click=move |_| {
+                            let mode = player.with_untracked(|s| s.repeat).next();
+                            leptos::task::spawn_local(ipc::set_repeat(mode));
+                        }>
+                        {move || if player.with(|s| s.repeat) == RepeatMode::One { "↻1" } else { "↻" }}
+                    </button>
                 </div>
                 <div class="np-seek">
                     <span class="time">{move || display(position())}</span>
@@ -167,12 +187,17 @@ fn QueueDrawer(on_close: impl Fn() + 'static + Copy) -> impl IntoView {
                 if state.queue.is_empty() {
                     return view! { <p class="muted">"The queue is empty. Play something from the library."</p> }.into_any();
                 }
+                // In play order (shuffled when shuffle is on); songs before the current one have
+                // been heard this cycle.
+                let current_at = state.index.and_then(|i| state.order.iter().position(|&o| o == i));
                 view! {
                     <ol class="queue">
-                        {state.queue.into_iter().enumerate().map(|(i, item)| {
+                        {state.order.iter().enumerate().map(|(at, &i)| {
+                            let item = state.queue[i].clone();
                             let current = state.index == Some(i);
+                            let heard = current_at.is_some_and(|c| at < c);
                             view! {
-                                <li class:current=current>
+                                <li class:current=current class:heard=heard>
                                     <button class="queue-item" on:click=move |_| leptos::task::spawn_local(ipc::jump(i))>
                                         <span class="q-title">{item.title}</span>
                                         <span class="q-artist">{item.artist}</span>

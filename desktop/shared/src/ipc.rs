@@ -38,6 +38,30 @@ impl AudioRef {
     }
 }
 
+/// What happens at the end of a song or of the queue.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RepeatMode {
+    /// Stop after the last song.
+    #[default]
+    Off,
+    /// Start over after the last song (with shuffle: a fresh shuffle, every song once per cycle).
+    All,
+    /// Replay the current song when it ends. Next still moves on.
+    One,
+}
+
+impl RepeatMode {
+    /// The order the repeat button cycles through.
+    pub fn next(self) -> Self {
+        match self {
+            RepeatMode::Off => RepeatMode::All,
+            RepeatMode::All => RepeatMode::One,
+            RepeatMode::One => RepeatMode::Off,
+        }
+    }
+}
+
 /// One entry in the play queue, with what the now-playing bar shows.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,6 +80,10 @@ pub struct PlayerState {
     pub queue: Vec<QueueItem>,
     /// Index into `queue` of the current item.
     pub index: Option<usize>,
+    /// Indices into `queue` in the order they play (shuffled when `shuffle` is on).
+    pub order: Vec<usize>,
+    pub shuffle: bool,
+    pub repeat: RepeatMode,
     pub playing: bool,
     /// Fetching audio before playback can start (or continue after a seek).
     pub buffering: bool,
@@ -82,11 +110,15 @@ pub struct Settings {
     /// Largest size of the local audio cache, in megabytes.
     pub cache_max_megabytes: u64,
     pub volume: f32,
+    #[serde(default)]
+    pub shuffle: bool,
+    #[serde(default)]
+    pub repeat: RepeatMode,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { server_url: String::new(), cache_max_megabytes: 2_048, volume: 0.8 }
+        Self { server_url: String::new(), cache_max_megabytes: 2_048, volume: 0.8, shuffle: false, repeat: RepeatMode::Off }
     }
 }
 

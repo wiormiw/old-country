@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use shared::{PlayerState, QueueItem};
+use shared::{PlayerState, QueueItem, RepeatMode};
 
 use super::cache::AudioCache;
 use super::decoder::Decoder;
@@ -37,8 +37,18 @@ pub enum Command {
     Prev,
     Seek(f64),
     SetVolume(f32),
+    SetShuffle(bool),
+    SetRepeat(RepeatMode),
     Stop,
     Loaded { generation: u64, result: Result<DecodedSource, String> },
+}
+
+/// Player settings restored from the last session.
+#[derive(Clone, Copy, Debug)]
+pub struct StartSettings {
+    pub volume: f32,
+    pub shuffle: bool,
+    pub repeat: RepeatMode,
 }
 
 /// A handle to the player thread.
@@ -52,18 +62,27 @@ impl PlayerHandle {
     pub fn spawn(
         cache: Arc<AudioCache>,
         server: ServerUrl,
-        volume: f32,
+        start: StartSettings,
         emit: impl Fn(&PlayerState) + Send + 'static,
     ) -> Self {
         let (commands, inbox) = mpsc::channel();
-        let state = Arc::new(Mutex::new(PlayerState { volume, ..Default::default() }));
+        let volume = start.volume;
+        let state = Arc::new(Mutex::new(PlayerState {
+            volume,
+            shuffle: start.shuffle,
+            repeat: start.repeat,
+            ..Default::default()
+        }));
+        let mut queue = Queue::default();
+        queue.set_shuffle(start.shuffle);
+        queue.set_repeat(start.repeat);
         let engine = Engine {
             inbox,
             outbox: commands.clone(),
             cache,
             server,
             published: Arc::clone(&state),
-            queue: Queue::default(),
+            queue,
             generation: 0,
             loaded: false,
             want_playing: false,
@@ -148,7 +167,8 @@ impl Engine {
             if let Some(player) = &output {
                 // A loaded track that has nothing left to play has ended.
                 if self.loaded && self.want_playing && player.empty() {
-                    self.next(output.as_ref());
+                    self.queue.advance(true);
+                    self.start(output.as_ref());
                 }
             }
             let state = self.snapshot(output.as_ref());
@@ -206,6 +226,8 @@ impl Engine {
                 }
             }
             Command::Seek(seconds) => self.seek(seconds, output),
+            Command::SetShuffle(on) => self.queue.set_shuffle(on),
+            Command::SetRepeat(mode) => self.queue.set_repeat(mode),
             Command::SetVolume(volume) => {
                 self.volume = volume.clamp(0.0, 1.0);
                 if let Some(player) = output {
@@ -294,8 +316,9 @@ impl Engine {
         }
     }
 
+    /// The Next button: always another song (repeat-one only replays songs that end).
     fn next(&mut self, output: Option<&rodio::Player>) {
-        self.queue.advance();
+        self.queue.advance(false);
         self.start(output);
     }
 
@@ -315,6 +338,9 @@ impl Engine {
         PlayerState {
             queue: self.queue.items().to_vec(),
             index: self.queue.index(),
+            order: self.queue.order().to_vec(),
+            shuffle: self.queue.shuffle(),
+            repeat: self.queue.repeat(),
             playing: self.want_playing && self.loaded,
             buffering: self.buffering,
             // Rounded so the state only changes (and is pushed) when the display would.

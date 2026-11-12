@@ -4,8 +4,8 @@
 use std::sync::{Arc, Mutex};
 
 use shared::{
-    AppError, DownloadStatus, ImportReport, Paged, PlayerState, Playlist, PlaylistSummary, QueueItem, ScanStatus,
-    Settings, Track, YouTubeResult,
+    AppError, DownloadStatus, ImportReport, Paged, PlayerState, Playlist, PlaylistSummary, QueueItem, RepeatMode,
+    ScanStatus, Settings, Track, YouTubeResult,
 };
 use tauri::{AppHandle, State};
 
@@ -202,4 +202,22 @@ pub fn player_set_volume(app: AppHandle, state: State<'_, AppState>, volume: f32
         settings::save(&app, &settings)?;
     }
     Ok(())
+}
+
+/// Shuffle on or off; remembered for the next session.
+#[tauri::command]
+pub fn player_set_shuffle(app: AppHandle, state: State<'_, AppState>, on: bool) -> Reply<()> {
+    state.player.send(Command::SetShuffle(on));
+    let mut settings = state.settings.lock().expect("settings lock");
+    settings.shuffle = on;
+    settings::save(&app, &settings)
+}
+
+/// Repeat off, all or one; remembered for the next session.
+#[tauri::command]
+pub fn player_set_repeat(app: AppHandle, state: State<'_, AppState>, mode: RepeatMode) -> Reply<()> {
+    state.player.send(Command::SetRepeat(mode));
+    let mut settings = state.settings.lock().expect("settings lock");
+    settings.repeat = mode;
+    settings::save(&app, &settings)
 }

@@ -220,6 +220,8 @@ tr:hover .row-play { opacity: 1; color: var(--accent-strong); }
 .np-controls { display: flex; gap: 8px; align-items: center; }
 .np-controls .play { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: 16px; }
 .np-controls .play:hover { background: var(--accent-strong); }
+.np-controls .toggle { color: var(--muted); font-size: 15px; }
+.np-controls .toggle.active { color: var(--accent-strong); background: rgb(201 162 39 / 0.16); }
 .np-seek { display: flex; align-items: center; gap: 10px; width: 100%; }
 .np-seek input { flex: 1; }
 .time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 38px; text-align: center; }
@@ -245,6 +247,7 @@ input[type="range"] { accent-color: var(--accent); }
 .queue { list-style: none; margin: 0; padding: 0; }
 .queue li { display: flex; align-items: center; gap: 4px; border-radius: var(--radius-sm); }
 .queue li.current { background: rgb(201 162 39 / 0.18); }
+.queue li.heard .queue-item { opacity: 0.5; }
 .queue-item { flex: 1; display: grid; text-align: left; padding: 6px 8px; min-width: 0; }
 .q-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .q-artist { font-size: 12px; color: var(--muted); }

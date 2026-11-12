@@ -4,8 +4,8 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use shared::{
-    AppError, DownloadStatus, ImportReport, Paged, PlayerState, Playlist, PlaylistSummary, QueueItem, ScanStatus,
-    Settings, Track, YouTubeResult,
+    AppError, DownloadStatus, ImportReport, Paged, PlayerState, Playlist, PlaylistSummary, QueueItem, RepeatMode,
+    ScanStatus, Settings, Track, YouTubeResult,
 };
 use wasm_bindgen::prelude::*;
 
@@ -163,6 +163,14 @@ pub async fn seek(seconds: f64) {
 
 pub async fn set_volume(volume: f32, persist: bool) {
     fire("player_set_volume", args!(volume: f32 = volume, persist: bool = persist)).await;
+}
+
+pub async fn set_shuffle(on: bool) {
+    fire("player_set_shuffle", args!(on: bool = on)).await;
+}
+
+pub async fn set_repeat(mode: RepeatMode) {
+    fire("player_set_repeat", args!(mode: RepeatMode = mode)).await;
 }
 
 /// Player controls report back through state events, so their replies carry nothing to show.

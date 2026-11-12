@@ -14,7 +14,7 @@ use tauri::{Emitter, Manager};
 
 use crate::api::ApiClient;
 use crate::commands::AppState;
-use crate::player::PlayerHandle;
+use crate::player::{PlayerHandle, StartSettings};
 use crate::player::cache::AudioCache;
 use crate::player::media_keys::MediaKeys;
 
@@ -41,7 +41,8 @@ pub fn run() {
             let events = app.handle().clone();
             let media_keys: Arc<OnceLock<MediaKeys>> = Arc::new(OnceLock::new());
             let mirror = Arc::clone(&media_keys);
-            let player = PlayerHandle::spawn(Arc::clone(&cache), Arc::clone(&server), settings.volume, move |state| {
+            let start = StartSettings { volume: settings.volume, shuffle: settings.shuffle, repeat: settings.repeat };
+            let player = PlayerHandle::spawn(Arc::clone(&cache), Arc::clone(&server), start, move |state| {
                 let _ = events.emit(PLAYER_STATE_EVENT, state);
                 if let Some(keys) = mirror.get() {
                     keys.update(state);
@@ -90,6 +91,8 @@ pub fn run() {
             commands::player_seek,
             commands::player_stop,
             commands::player_set_volume,
+            commands::player_set_shuffle,
+            commands::player_set_repeat,
         ])
         .run(tauri::generate_context!())
         .expect("old-country failed to start");

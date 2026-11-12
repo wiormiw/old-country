@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use old_country_lib::api::ApiClient;
 use old_country_lib::player::cache::AudioCache;
-use old_country_lib::player::{Command, PlayerHandle};
+use old_country_lib::player::{Command, PlayerHandle, StartSettings};
 use shared::{AudioRef, PlayerState, QueueItem};
 
 fn server() -> Option<String> {
@@ -35,7 +35,8 @@ fn rig(base: &str) -> Rig {
     let cache = Arc::new(AudioCache::new(cache_path.clone(), http.clone(), runtime.handle().clone()).unwrap());
     let states = Arc::new(Mutex::new(Vec::new()));
     let sink = Arc::clone(&states);
-    let player = PlayerHandle::spawn(cache, Arc::clone(&url), 0.15, move |s| sink.lock().unwrap().push(s.clone()));
+    let start = StartSettings { volume: 0.15, shuffle: false, repeat: shared::RepeatMode::Off };
+    let player = PlayerHandle::spawn(cache, Arc::clone(&url), start, move |s| sink.lock().unwrap().push(s.clone()));
     Rig { api: ApiClient::new(http, url), runtime, player, states, _cache_dir: cache_dir, cache_path }
 }
 

@@ -3179,6 +3179,7 @@ name = "old-country"
 version = "0.1.0"
 dependencies = [
  "env_logger",
+ "fastrand",
  "futures-util",
  "log",
  "reqwest",

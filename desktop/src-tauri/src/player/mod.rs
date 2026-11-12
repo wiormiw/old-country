@@ -8,7 +8,7 @@ pub mod media_keys;
 pub mod queue;
 pub mod source;
 
-pub use engine::{Command, PlayerHandle, ServerUrl};
+pub use engine::{Command, PlayerHandle, ServerUrl, StartSettings};
 
 #[cfg(test)]
 mod decoding_tests;
