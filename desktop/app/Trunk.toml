@@ -1,0 +1,12 @@
+[build]
+target = "index.html"
+dist = "dist"
+
+[serve]
+# Tauri's devUrl points here (src-tauri/tauri.conf.json).
+port = 1420
+open = false
+
+[watch]
+# Changes to the core don't need a UI rebuild.
+ignore = ["../src-tauri"]

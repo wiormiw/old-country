@@ -1,0 +1,38 @@
+[package]
+name = "old-country"
+description = "old-country desktop: a native player for the old-country music server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "old_country_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+shared.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tauri = { version = "2.12.5", features = [] }
+tauri-plugin-store = "2.5.1"
+# native-tls (system OpenSSL) rather than the default aws-lc, which needs CMake to build.
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream", "native-tls", "http2"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
+futures-util = "0.3"
+log = "0.4"
+env_logger = "0.11"
+# Playback: rodio only as the output; decoding is ours (symphonia 0.6 + libopus), see src/player.
+rodio = { version = "0.23.0", default-features = false, features = ["playback"] }
+symphonia = { version = "0.6.1", features = ["all"] }
+symphonia-adapter-libopus = { version = "0.3.0", default-features = false }
+
+[dev-dependencies]
+tempfile = "3"
+wiremock = "0.6.5"
+
+[lints]
+workspace = true

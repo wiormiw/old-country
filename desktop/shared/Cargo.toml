@@ -1,0 +1,15 @@
+[package]
+name = "shared"
+description = "Types shared by the old-country desktop core and UI: API models and IPC payloads"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
