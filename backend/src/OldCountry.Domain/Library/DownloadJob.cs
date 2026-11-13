@@ -101,5 +101,8 @@ public sealed class DownloadJob : Entity<DownloadJobId>
         TrackId = trackId;
         ErrorCode = code;
         Error = message;
+        Raise(state == DownloadJobState.Completed
+            ? new DownloadFinished(Id, VideoId, trackId!.Value)
+            : new DownloadFailed(Id, VideoId, code!, message!));
     }
 }

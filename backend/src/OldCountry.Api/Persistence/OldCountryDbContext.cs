@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using OldCountry.Api.Persistence.Conventions;
+using OldCountry.Domain.Common;
 using OldCountry.Domain.Library;
 
 namespace OldCountry.Api.Persistence;
@@ -26,5 +27,7 @@ public sealed class OldCountryDbContext(DbContextOptions<OldCountryDbContext> op
         configurationBuilder.Conventions.Add(_ => new SnakeCaseNamingConvention());
         // Single-value value objects become their primitive column, everywhere they appear.
         ValueObjectConverters.Register(configurationBuilder);
+        // Domain events live on entities only until the save that commits them.
+        configurationBuilder.IgnoreAny<IReadOnlyList<IDomainEvent>>();
     }
 }

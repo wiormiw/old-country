@@ -4,7 +4,7 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use shared::{
-    AppError, DownloadStatus, Downloads, ImportReport, LibraryChanges, LiveStatus, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, RepeatMode,
+    Announcement, AppError, DownloadStatus, Downloads, ImportReport, LibraryChanges, LiveStatus, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, RepeatMode,
     ScanStatus, Settings, Theme, Track, TrackDetail, YouTubeResult,
 };
 use wasm_bindgen::prelude::*;
@@ -247,6 +247,11 @@ pub fn on_player_state(handler: impl Fn(PlayerState) + 'static) {
 /// sync, a download finishing). Listens for the app's lifetime.
 pub fn on_library_changes(handler: impl Fn(LibraryChanges) + 'static) {
     on_event(shared::LIBRARY_CHANGES_EVENT, handler);
+}
+
+/// Calls `handler` with the server's news (a download finished, songs arrived from YouTube).
+pub fn on_news(handler: impl Fn(Vec<Announcement>) + 'static) {
+    on_event(shared::NEWS_EVENT, handler);
 }
 
 /// Calls `handler` when the live connection to the server comes up or goes down.

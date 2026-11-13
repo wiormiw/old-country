@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using OldCountry.Api.Common.Events;
 using OldCountry.Api.Common.Realtime;
 using OldCountry.Api.Features;
 using OldCountry.Api.Middleware;
@@ -23,6 +24,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     json.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
 });
 
+builder.Services.AddDomainEvents();
 builder.Services.AddFeatures();
 builder.Services.AddRealtime(builder.Environment);
 

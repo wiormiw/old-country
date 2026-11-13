@@ -22,6 +22,8 @@ impl Listener for Forward {
     fn status(&self, status: LiveStatus) {
         let _ = self.0.send(Err(status));
     }
+
+    fn announced(&self, _news: Vec<shared::Announcement>) {}
 }
 
 #[tokio::test]

@@ -10,7 +10,7 @@ pub mod settings;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
-use shared::{LIBRARY_CHANGES_EVENT, LIVE_STATUS_EVENT, LibraryChanges, LiveStatus, PLAYER_STATE_EVENT};
+use shared::{Announcement, LIBRARY_CHANGES_EVENT, LIVE_STATUS_EVENT, LibraryChanges, LiveStatus, NEWS_EVENT, PLAYER_STATE_EVENT};
 use tauri::{Emitter, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
@@ -41,6 +41,10 @@ struct LiveEvents {
 impl live::Listener for LiveEvents {
     fn changed(&self, changes: LibraryChanges) {
         let _ = self.app.emit(LIBRARY_CHANGES_EVENT, changes);
+    }
+
+    fn announced(&self, news: Vec<Announcement>) {
+        let _ = self.app.emit(NEWS_EVENT, news);
     }
 
     fn status(&self, status: LiveStatus) {

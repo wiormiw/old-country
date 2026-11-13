@@ -123,6 +123,7 @@ public sealed class Playlist : AuditableEntity<PlaylistId>
     {
         if (Append([.. songs.Select(song => song.Track)], addedAt) is { } error) return error;
         MarkTakenFromYouTube(songs.Select(song => song.Video));
+        if (songs.Count > 0) Raise(new SongsAddedFromYouTube(Id, songs.Count));
         return null;
     }
 

@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +78,8 @@ fun AppScaffold(player: PlayerConnection) {
     // Home says when the server isn't set up yet, and leads to Settings.
     val start: Any = Route.Home
     var showPlayer by rememberSaveable { mutableStateOf(false) }
+    // News from the server (a download finished, songs arrived from YouTube) shows at the bottom.
+    LaunchedEffect(env) { app.live.news.collect { env.notice(it.message) } }
 
     CompositionLocalProvider(LocalEnv provides env) {
         Scaffold(

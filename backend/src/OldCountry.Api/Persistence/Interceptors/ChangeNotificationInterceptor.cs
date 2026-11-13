@@ -3,14 +3,17 @@ using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using OldCountry.Api.Common.Events;
 using OldCountry.Api.Common.Realtime;
+using OldCountry.Domain.Common;
 using OldCountry.Domain.Library;
 
 namespace OldCountry.Api.Persistence.Interceptors;
 
 /// <summary>
-/// Notices what each save changes and reports it to the apps (through <see cref="ChangeFeed"/>)
-/// once it has committed, never before: an app told too early would refetch the old data, and
+/// Notices what each save changes and hands it on once it has committed, never before: the
+/// rows touched become refetch hints for the apps (<see cref="ChangeFeed"/>), and the domain
+/// events entities raised go to their handlers (<see cref="DomainEventFeed"/>). Never before: an app told too early would refetch the old data, and
 /// one told about a rolled-back change would refetch for nothing.
 ///
 /// Being in the save pipeline means every writer is covered without remembering to notify:
@@ -22,7 +25,7 @@ namespace OldCountry.Api.Persistence.Interceptors;
 /// abandoned without committing) drops what they gathered.</item>
 /// </list>
 /// </summary>
-internal sealed class ChangeNotificationInterceptor(ChangeFeed feed) : ISaveChangesInterceptor, IDbTransactionInterceptor
+internal sealed class ChangeNotificationInterceptor(ChangeFeed feed, DomainEventFeed events) : ISaveChangesInterceptor, IDbTransactionInterceptor
 {
     /// <summary>
     /// What each context has saved but not yet committed, by transaction. Weakly keyed, so a
@@ -34,9 +37,11 @@ internal sealed class ChangeNotificationInterceptor(ChangeFeed feed) : ISaveChan
     {
         /// <summary>Gathered from the change tracker before the save; reported or dropped after it.</summary>
         public LibraryChanges Saving = LibraryChanges.None;
+        public List<IDomainEvent> SavingEvents = [];
 
         /// <summary>Saved inside the open transaction, waiting for it to commit.</summary>
         public LibraryChanges Uncommitted = LibraryChanges.None;
+        public List<IDomainEvent> UncommittedEvents = [];
 
         public Guid? Transaction;
     }
@@ -120,23 +125,36 @@ internal sealed class ChangeNotificationInterceptor(ChangeFeed feed) : ISaveChan
     private void Gather(DbContext? context)
     {
         if (context is null) return;
-        _pending.GetOrCreateValue(context).Saving = Describe(context.ChangeTracker);
+        var pending = _pending.GetOrCreateValue(context);
+        pending.Saving = Describe(context.ChangeTracker);
+        pending.SavingEvents = TakeEvents(context.ChangeTracker);
     }
 
     private void Saved(DbContext? context)
     {
         if (context is null || !_pending.TryGetValue(context, out var pending)) return;
         var saved = pending.Saving;
+        var raised = pending.SavingEvents;
         pending.Saving = LibraryChanges.None;
+        pending.SavingEvents = [];
         if (context.Database.CurrentTransaction is { } transaction && transaction.TransactionId == pending.Transaction)
+        {
             pending.Uncommitted = pending.Uncommitted.Merge(saved);
+            pending.UncommittedEvents.AddRange(raised);
+        }
         else
-            feed.Publish(saved); // committed by the save itself
+        {
+            // Committed by the save itself.
+            feed.Publish(saved);
+            events.Publish(raised);
+        }
     }
 
     private void Forget(DbContext? context)
     {
-        if (context is not null && _pending.TryGetValue(context, out var pending)) pending.Saving = LibraryChanges.None;
+        if (context is null || !_pending.TryGetValue(context, out var pending)) return;
+        pending.Saving = LibraryChanges.None;
+        pending.SavingEvents = [];
     }
 
     private void Started(TransactionEndEventData eventData)
@@ -146,6 +164,7 @@ internal sealed class ChangeNotificationInterceptor(ChangeFeed feed) : ISaveChan
         var pending = _pending.GetOrCreateValue(eventData.Context);
         pending.Transaction = eventData.TransactionId;
         pending.Uncommitted = LibraryChanges.None;
+        pending.UncommittedEvents = [];
     }
 
     private void Committed(TransactionEndEventData eventData)
@@ -153,7 +172,9 @@ internal sealed class ChangeNotificationInterceptor(ChangeFeed feed) : ISaveChan
         if (eventData.Context is null || !_pending.TryGetValue(eventData.Context, out var pending)) return;
         if (pending.Transaction != eventData.TransactionId) return;
         feed.Publish(pending.Uncommitted);
+        events.Publish(pending.UncommittedEvents);
         pending.Uncommitted = LibraryChanges.None;
+        pending.UncommittedEvents = [];
         pending.Transaction = null;
     }
 
@@ -162,7 +183,21 @@ internal sealed class ChangeNotificationInterceptor(ChangeFeed feed) : ISaveChan
         if (eventData.Context is null || !_pending.TryGetValue(eventData.Context, out var pending)) return;
         if (pending.Transaction != eventData.TransactionId) return;
         pending.Uncommitted = LibraryChanges.None;
+        pending.UncommittedEvents = [];
         pending.Transaction = null;
+    }
+
+    /// <summary>The domain events raised by entities in this save, taken off them so they go out once.</summary>
+    internal static List<IDomainEvent> TakeEvents(ChangeTracker tracker)
+    {
+        List<IDomainEvent> raised = [];
+        foreach (var entry in tracker.Entries<IHasDomainEvents>())
+        {
+            if (entry.Entity.DomainEvents.Count == 0) continue;
+            raised.AddRange(entry.Entity.DomainEvents);
+            entry.Entity.ClearDomainEvents();
+        }
+        return raised;
     }
 
     /// <summary>Which playlists, songs and downloads the pending save touches.</summary>

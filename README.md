@@ -315,7 +315,7 @@ tail -f ~/.local/share/dev.wiormiw.oldcountry/logs/old-country.log
 
 | Area | Endpoints |
 |---|---|
-| Live updates | `/hubs/library` (SignalR): one server-to-app message, `Changed { playlists, tracks, downloads, everything }` |
+| Live updates | `/hubs/library` (SignalR), server to app only: `Changed { playlists, tracks, downloads, everything }` (refetch hints) and `Announced [{ kind, message, trackId?, playlistId? }]` (news to show) |
 | Tracks | `POST /api/tracks`, `GET /api/tracks`, `GET /api/tracks/{id}`, `GET /api/tracks/{id}/audio` |
 | Library scans | `POST /api/tracks/scans`, `GET /api/tracks/scans/latest` |
 | Playlists | `POST/GET /api/playlists`, `GET/PUT/DELETE /api/playlists/{id}`, `POST /api/playlists/{id}/tracks`, `DELETE /api/playlists/{id}/tracks/{position}`, `POST /api/playlists/{id}/tracks/move` |
@@ -372,6 +372,32 @@ any save ─▶ ChangeNotificationInterceptor ─(after commit)─▶ ChangeFeed
   traces and metrics.
 - **Tests** connect the real .NET SignalR client over WebSockets (`LibraryHubTests`), including
   that a refused change tells nobody.
+
+#### Domain events and news
+
+Refetch hints come from rows changing; **news** comes from the domain saying what happened. Entities
+raise domain events as part of a change (plain records in `OldCountry.Domain`, e.g.
+`DownloadJob.Complete` raises `DownloadFinished`, `Playlist.AppendFromYouTube` raises
+`SongsAddedFromYouTube`). The same interceptor takes them off the entities and hands them on only
+after the commit, to explicitly registered handlers (`AddDomainEventHandler<TEvent, THandler>()`,
+no scanning, like commands), each run in its own scope by `DomainEventDispatcher`.
+
+```
+DownloadJob.Complete() ─ raises DownloadFinished ─▶ (commit) ─▶ DomainEventDispatcher ─▶ AnnounceDownloadFinished ─▶ "Downloaded “Song”." ─▶ Announced
+```
+
+| Event | Raised by | Becomes |
+|---|---|---|
+| `DownloadFinished` | `DownloadJob.Complete` | "Downloaded “Song”." |
+| `DownloadFailed` | `DownloadJob.Fail`, and giving up after 3 tries | "YouTube refused “Song”: Premium only." |
+| `SongsAddedFromYouTube` | `Playlist.AppendFromYouTube` (import, manual or scheduled sync) | "“Mix”: 3 new songs from YouTube." |
+
+The apps show them as a notice. Bursts are summarised ("Downloaded 12 songs."), so "Download all"
+doesn't bury you. The dispatch is in memory: events in flight when the server stops are lost, which
+is fine for news; anything that must never be lost would need an outbox table written in the same
+transaction. Why both mechanisms: the change tracker can't miss a writer, so refetch hints stay
+complete; events carry intent, so news can say what happened. New reactions (a "recently played"
+list, phone notifications) are new handlers on the same events.
 
 The two apps connect differently:
 

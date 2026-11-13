@@ -26,14 +26,23 @@ internal sealed partial class ChangeBroadcaster(
         {
             try
             {
-                var changes = await Gather(stoppingToken);
+                var (changes, news) = await Gather(stoppingToken);
                 if (feed.TakeOverflow())
                 {
                     changes = changes with { Everything = true };
                     LogOverflowed();
                 }
-                await hub.Clients.All.Changed(changes);
-                LogSent(changes.Playlists.Count, changes.Tracks, changes.Downloads);
+                // Refetch hints first, so the news arrives with fresh data behind it.
+                if (!changes.IsEmpty)
+                {
+                    await hub.Clients.All.Changed(changes);
+                    LogSent(changes.Playlists.Count, changes.Tracks, changes.Downloads);
+                }
+                if (news.Count > 0)
+                {
+                    await hub.Clients.All.Announced(Announcement.Summarize(news));
+                    LogAnnounced(news.Count);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -47,7 +56,7 @@ internal sealed partial class ChangeBroadcaster(
     }
 
     /// <summary>Waits for a change, then merges in whatever follows until things settle.</summary>
-    private async Task<LibraryChanges> Gather(CancellationToken stoppingToken)
+    private async Task<Update> Gather(CancellationToken stoppingToken)
     {
         var reader = feed.Reader;
         var changes = await reader.ReadAsync(stoppingToken);
@@ -71,6 +80,9 @@ internal sealed partial class ChangeBroadcaster(
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Told apps: {Playlists} playlist(s), tracks {Tracks}, downloads {Downloads}")]
     private partial void LogSent(int playlists, bool tracks, bool downloads);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Told apps {Count} piece(s) of news")]
+    private partial void LogAnnounced(int count);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Change notifications fell behind; telling apps everything may have changed")]
     private partial void LogOverflowed();

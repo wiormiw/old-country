@@ -13,6 +13,23 @@ pub const PLAYER_STATE_EVENT: &str = "player://state";
 /// Event the core emits when the server says something changed (see `src-tauri/src/live.rs`).
 pub const LIBRARY_CHANGES_EVENT: &str = "server://changes";
 
+/// Event the core emits with the server's news (a download finished, songs arrived from YouTube).
+pub const NEWS_EVENT: &str = "server://news";
+
+/// News from the server worth showing the person, as the hub's `Announced` sends it. The server
+/// decides the wording; the ids say what it's about.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Announcement {
+    /// `Downloaded`, `DownloadFailed` or `NewFromYouTube` (kept as text, so new kinds still show).
+    pub kind: String,
+    pub message: String,
+    #[serde(default)]
+    pub track_id: Option<String>,
+    #[serde(default)]
+    pub playlist_id: Option<String>,
+}
+
 /// Event the core emits when the live connection to the server comes up or goes down.
 pub const LIVE_STATUS_EVENT: &str = "server://live";
 

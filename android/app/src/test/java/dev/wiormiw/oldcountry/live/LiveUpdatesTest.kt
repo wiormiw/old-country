@@ -42,4 +42,15 @@ class LiveUpdatesTest {
         assertTrue(everything.touchesPlaylist("any") && everything.touchesTracks && everything.touchesDownloads)
         assertFalse(ChangesMessage().toChanges().touchesPlaylistList)
     }
+
+    @Test
+    fun `announcements without a message are dropped, the rest kept as sent`() {
+        val sent = AnnouncementMessage().apply {
+            kind = "Downloaded"
+            message = "Downloaded “Song”."
+            trackId = "t1"
+        }
+        assertEquals(Announcement("Downloaded", "Downloaded “Song”.", "t1", null), sent.toAnnouncement())
+        assertEquals(null, AnnouncementMessage().apply { kind = "Downloaded" }.toAnnouncement())
+    }
 }

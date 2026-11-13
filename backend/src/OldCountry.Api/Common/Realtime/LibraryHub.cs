@@ -8,6 +8,9 @@ public interface ILibraryClient
 {
     /// <summary>Something changed; refetch whatever shows it.</summary>
     Task Changed(LibraryChanges changes);
+
+    /// <summary>News worth showing the person (downloads finishing, songs arriving from YouTube).</summary>
+    Task Announced(IReadOnlyList<Announcement> news);
 }
 
 /// <summary>

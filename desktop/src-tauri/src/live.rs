@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use shared::{LibraryChanges, LiveStatus};
+use shared::{Announcement, LibraryChanges, LiveStatus};
 use tokio::time::{Instant, MissedTickBehavior, interval, sleep, timeout};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message as Frame;
@@ -121,6 +121,7 @@ pub mod protocol {
 /// What the live connection reports to the rest of the app.
 pub trait Listener: Send + Sync + 'static {
     fn changed(&self, changes: LibraryChanges);
+    fn announced(&self, news: Vec<Announcement>);
     fn status(&self, status: LiveStatus);
 }
 
@@ -222,6 +223,12 @@ async fn session(url: &str, server: &ServerUrl, base: &str, listener: &dyn Liste
                     match arguments.into_iter().next().map(serde_json::from_value::<LibraryChanges>) {
                         Some(Ok(changes)) => listener.changed(changes),
                         other => log::warn!("unreadable Changed message: {other:?}"),
+                    }
+                }
+                Ok(protocol::Message::Invocation { target, arguments }) if target == "Announced" => {
+                    match arguments.into_iter().next().map(serde_json::from_value::<Vec<Announcement>>) {
+                        Some(Ok(news)) => listener.announced(news),
+                        other => log::warn!("unreadable Announced message: {other:?}"),
                     }
                 }
                 Ok(protocol::Message::Close { error, allow_reconnect }) => {
@@ -329,6 +336,12 @@ mod tests {
         fn status(&self, status: LiveStatus) {
             let _ = self.0.send(format!("status {status:?}"));
         }
+
+        fn announced(&self, news: Vec<Announcement>) {
+            for item in news {
+                let _ = self.0.send(format!("news {}", item.message));
+            }
+        }
     }
 
     /// A stand-in hub: answers the handshake, sends one `Changed`, then closes the first
@@ -350,6 +363,8 @@ mod tests {
                 if connection == 1 {
                     socket.send(Frame::text("{\"type\":7,\"error\":\"restarting\",\"allowReconnect\":true}\u{1e}")).await.unwrap();
                 } else {
+                    let news = r#"{"type":1,"target":"Announced","arguments":[[{"kind":"Downloaded","message":"Downloaded “Song”.","trackId":"t1"}]]}"#;
+                    socket.send(Frame::text(format!("{news}\u{1e}"))).await.unwrap();
                     tokio::spawn(async move { while socket.next().await.is_some() {} });
                 }
             }
@@ -368,7 +383,7 @@ mod tests {
         let finished = timeout(Duration::from_secs(10), async {
             while let Some(event) = heard.recv().await {
                 log.push(event);
-                if log.iter().any(|e| e.contains(r#""tracks":true"#)) {
+                if log.iter().any(|e| e.contains("news Downloaded “Song”.")) {
                     break;
                 }
             }
@@ -383,6 +398,7 @@ mod tests {
         assert!(position("status Live") < position(r#""playlists":["p1"]"#));
         assert!(position(r#""playlists":["p1"]"#) < position("status Reconnecting"));
         assert!(position("status Reconnecting") < position(r#""tracks":true"#));
+        assert!(position(r#""tracks":true"#) < position("news Downloaded “Song”."), "news after the refetch hint");
         assert_eq!(log.iter().filter(|e| e.contains(r#""everything":true"#)).count(), 2, "catches up after each connect");
     }
 }

@@ -60,6 +60,20 @@ internal class ChangesMessage {
     fun toChanges() = LibraryChanges(playlists.orEmpty().toSet(), tracks, downloads, everything)
 }
 
+/** News from the server worth showing: "Downloaded “Song”", "“Mix”: 3 new songs from YouTube". */
+data class Announcement(val kind: String, val message: String, val trackId: String?, val playlistId: String?)
+
+/** An announcement as Gson reads it (see [ChangesMessage]). */
+@Keep
+internal class AnnouncementMessage {
+    var kind: String? = null
+    var message: String? = null
+    var trackId: String? = null
+    var playlistId: String? = null
+
+    fun toAnnouncement() = message?.let { Announcement(kind.orEmpty(), it, trackId, playlistId) }
+}
+
 enum class LiveStatus { Off, Connecting, Live, Reconnecting }
 
 /**
@@ -79,6 +93,9 @@ class LiveUpdates(
 ) {
     private val _changes = MutableSharedFlow<LibraryChanges>(extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val changes: SharedFlow<LibraryChanges> = _changes.asSharedFlow()
+
+    private val _news = MutableSharedFlow<Announcement>(extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val news: SharedFlow<Announcement> = _news.asSharedFlow()
 
     private val _status = MutableStateFlow(LiveStatus.Off)
     val status: StateFlow<LiveStatus> = _status.asStateFlow()
@@ -147,6 +164,11 @@ class LiveUpdates(
             .withHandshakeResponseTimeout(10_000)
             .build()
         connection.on("Changed", { message: ChangesMessage -> _changes.tryEmit(message.toChanges()) }, ChangesMessage::class.java)
+        connection.on(
+            "Announced",
+            { list: Array<AnnouncementMessage> -> list.forEach { it.toAnnouncement()?.let(_news::tryEmit) } },
+            Array<AnnouncementMessage>::class.java,
+        )
         return connection
     }
 

@@ -128,6 +128,15 @@ pub fn provide_app_state() {
     provide_context(Requests(requests));
 
     ipc::on_player_state(move |state| player.set(state));
+    // News from the server (a download finished, songs arrived from YouTube) shows as a notice.
+    let notice = expect_context::<Notice>();
+    ipc::on_news(move |news| {
+        // A burst is already summarised by the server; the few left share one notice.
+        let text = news.iter().map(|item| item.message.as_str()).collect::<Vec<_>>().join(" ");
+        if !text.is_empty() {
+            notice.info(text);
+        }
+    });
     leptos::task::spawn_local(async move {
         if let Ok(state) = ipc::player_state().await {
             player.set(state);

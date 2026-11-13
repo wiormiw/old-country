@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http.Connections;
+using OldCountry.Api.Common.Events;
+using OldCountry.Domain.Library;
 
 namespace OldCountry.Api.Common.Realtime;
 
@@ -10,6 +12,11 @@ internal static class RealtimeRegistration
     {
         services.AddSingleton<ChangeFeed>();
         services.AddHostedService<ChangeBroadcaster>();
+
+        // Domain events that become news for the apps.
+        services.AddDomainEventHandler<DownloadFinished, AnnounceDownloadFinished>();
+        services.AddDomainEventHandler<DownloadFailed, AnnounceDownloadFailed>();
+        services.AddDomainEventHandler<SongsAddedFromYouTube, AnnounceSongsFromYouTube>();
 
         services.AddSignalR(hub =>
             {

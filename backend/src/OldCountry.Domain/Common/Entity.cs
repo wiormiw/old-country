@@ -1,9 +1,18 @@
 namespace OldCountry.Domain.Common;
 
 /// <summary>Something with an identity that outlives its attribute values.</summary>
-public abstract class Entity<TId> where TId : struct
+public abstract class Entity<TId> : IHasDomainEvents where TId : struct
 {
+    private readonly List<IDomainEvent> _domainEvents = [];
+
     public TId Id { get; protected init; }
+
+    /// <summary>What this entity has raised since persistence last took its events. Not stored.</summary>
+    public IReadOnlyList<IDomainEvent> DomainEvents => _domainEvents;
+
+    public void ClearDomainEvents() => _domainEvents.Clear();
+
+    protected void Raise(IDomainEvent domainEvent) => _domainEvents.Add(domainEvent);
 }
 
 /// <summary>

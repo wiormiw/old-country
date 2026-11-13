@@ -4,6 +4,7 @@
 # builds and the payload it fills in must keep their names.
 -keep class com.microsoft.signalr.** { *; }
 -keep class dev.wiormiw.oldcountry.live.ChangesMessage { *; }
+-keep class dev.wiormiw.oldcountry.live.AnnouncementMessage { *; }
 # Optional dependencies of the client that Android doesn't have or need.
 -dontwarn org.slf4j.**
 -dontwarn javax.annotation.**
