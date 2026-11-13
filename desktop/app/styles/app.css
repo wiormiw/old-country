@@ -193,7 +193,7 @@ tr:hover .row-play { opacity: 1; color: var(--accent-strong); }
 .cards a { display: grid; gap: 4px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); text-decoration: none; }
 .cards a:hover { border-color: var(--accent); }
 .card-title { font-weight: 600; }
-.card-desc { font-size: 13px; color: var(--muted); }
+.card-desc { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 
 .results { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
 .result { display: flex; align-items: center; gap: 14px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }

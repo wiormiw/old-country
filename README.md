@@ -4,7 +4,10 @@ A personal music player: your offline library plus YouTube Music, in one place.
 
 - **Library**: scans your music folders (FLAC, MP3, AAC/ALAC, Opus, Vorbis, WAV), reads tags, and streams files with seeking.
 - **Playlists**: ordered, editable, duplicates allowed.
-- **YouTube Music**: search, play, download for offline, and import playlists or your liked songs. Importing a playlist again syncs it: songs added on YouTube since are appended, and your renames, reordering and removals are kept.
+- **YouTube Music**: search, play, download for offline, and import playlists or your liked songs.
+- **Playlist sync**: an imported playlist stays linked to YouTube Music. The server checks it every 6 hours (or when you press **Sync**) and appends songs added on YouTube since; your renames, reordering and removals are kept.
+- **Downloads**: one song or a whole playlist ("Download all"), queued in the database so they survive restarts, paced so YouTube doesn't block you, and songs YouTube refuses are remembered to retry later.
+- **Desktop app**: native playback with media keys, shuffle and repeat, an offline audio cache, a layout that fits a narrow window, and one window only (starting it again brings the open one forward).
 
 | Part | Stack | Status |
 |---|---|---|
@@ -19,12 +22,14 @@ The backend runs on a home server; the desktop app talks to it over the LAN.
 
 | | |
 |---|---|
-| ![A playlist with find-in-playlist and reordering](docs/screenshots/playlist.png) | ![Song page: format, quality, file, and the playlists it's in](docs/screenshots/song.png) |
-| **Playlists**: find within a playlist, reorder, play all | **Song page**: where it plays from, quality, file, playlists |
-| ![YouTube Music search results](docs/screenshots/youtube.png) | ![Queue drawer in shuffle order with repeat-all on](docs/screenshots/queue-shuffle.png) |
-| **YouTube Music**: search, play, queue, download | **Queue**: shuffle order; songs already heard are dimmed |
-| ![Settings with the logs panel](docs/screenshots/settings.png) | |
-| **Settings**: server address, cache size, where the logs are | |
+| ![An imported playlist: synced with YouTube Music, Download all, find and filter](docs/screenshots/playlist-sync.png) | ![Playlists, with a badge on the ones linked to YouTube Music](docs/screenshots/playlists.png) |
+| **Imported playlist**: when it last synced, Sync now, Download all, find and "Not downloaded" filter | **Playlists**: the YouTube badge marks the ones that sync |
+| ![Downloads page with the queue's progress](docs/screenshots/downloads.png) | ![YouTube Music search results](docs/screenshots/youtube.png) |
+| **Downloads**: the queue, what's done, what YouTube refused | **YouTube Music**: search, play, queue, download, import |
+| ![Queue drawer in shuffle order with repeat-all on](docs/screenshots/queue-shuffle.png) | ![Song page: format, quality, file, and the playlists it's in](docs/screenshots/song.png) |
+| **Queue**: shuffle order, repeat-all on | **Song page**: where it plays from, quality, file, playlists |
+| ![Settings with the logs panel](docs/screenshots/settings.png) | ![The app in a narrow window](docs/screenshots/narrow.png) |
+| **Settings**: server address, cache size, where the logs are | **Narrow window**: the sidebar becomes a top bar |
 
 ## Running the backend
 
@@ -234,6 +239,15 @@ The download queue is a table in Postgres, worked through one song at a time by 
 - **Survives restarts.** Queued songs stay queued. A song interrupted by a normal shutdown goes back in the queue; one interrupted by a crash is taken again when its *lease* runs out (a worker owns a song for twice the yt-dlp timeout plus two minutes). A song that never finishes is given up after 3 tries.
 - **Easy on YouTube.** A pause between songs, and when YouTube rate limits ("429", "confirm you're not a bot") the whole queue rests and resumes by itself. The Downloads page says until when.
 - **Remembers refusals.** A song YouTube won't give (Premium only, private, removed, age or region restricted) is marked on the track. "Download all" on a playlist skips those; "Retry skipped" tries them again, e.g. after getting Premium or adding cookies.
+
+**Playlist sync.** An imported playlist remembers its YouTube list id and every video it has taken from it. A sync is the same import again, and it adds only videos the playlist has never taken, so:
+
+- songs added on YouTube are appended, in YouTube's order;
+- a song you removed here stays removed, even while it's still on YouTube;
+- a song removed on YouTube stays here (it's yours now, and may be downloaded);
+- the name, description and order you gave it are kept.
+
+A background service checks every 15 minutes for linked playlists last synced more than `YouTubeMusic:PlaylistSyncInterval` ago (6 hours; `00:00:00` turns it off) and syncs them one at a time. It rests together with the download queue when YouTube rate limits, and after a failure (say, the playlist was deleted on YouTube) it leaves that playlist alone for one interval. Liked songs (`LM`) sync only when `YouTubeMusic:CookiesFile` is set. The app's **Sync** button (`POST /api/youtube-music/playlists/{id}/sync`) does it at once.
 
 Keeping YouTube playback steady:
 
