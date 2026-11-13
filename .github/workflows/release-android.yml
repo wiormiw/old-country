@@ -42,6 +42,9 @@ jobs:
           java-version: "21"
 
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          # Releases are rare: a clean download beats a stale cache.
+          cache-disabled: true
 
       - name: Signing key
         env:
