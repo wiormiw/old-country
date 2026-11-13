@@ -12,9 +12,35 @@ use super::{Command, PlayerHandle};
 /// How far the "seek" media keys jump.
 const SEEK_STEP: f64 = 10.0;
 
+/// A position change bigger than this between two state updates is a seek, not playback moving
+/// on (updates come every 250 ms while playing).
+const SEEK_JUMP: f64 = 1.5;
+
 pub struct MediaKeys {
     controls: Mutex<MediaControls>,
-    shown: Mutex<Option<QueueItem>>,
+    shown: Mutex<Shown>,
+}
+
+/// What the desktop was last told.
+#[derive(Default)]
+struct Shown {
+    item: Option<QueueItem>,
+    playback: Option<(bool, f64)>,
+}
+
+/// Whether the desktop needs a new playback status. Only for real changes: souvlaki's D-Bus thread
+/// handles about one update a second, so sending every position tick (4 a second) queued them
+/// up, and the desktop lagged further behind the longer a song played (showing "playing" long
+/// after a pause). Desktops move the position on by themselves while it's playing.
+fn playback_changed(last: Option<(bool, f64)>, playing: bool, position: f64) -> bool {
+    match last {
+        None => true,
+        Some((was_playing, _)) if was_playing != playing => true,
+        Some((_, was_at)) => {
+            let moved = position - was_at;
+            moved < 0.0 || moved > SEEK_JUMP
+        }
+    }
 }
 
 impl MediaKeys {
@@ -47,7 +73,7 @@ impl MediaKeys {
             log::warn!("media keys unavailable: {error:?}");
             return None;
         }
-        Some(Self { controls: Mutex::new(controls), shown: Mutex::new(None) })
+        Some(Self { controls: Mutex::new(controls), shown: Mutex::new(Shown::default()) })
     }
 
     /// Mirrors the player state to the desktop's media controls.
@@ -55,7 +81,8 @@ impl MediaKeys {
         let mut controls = self.controls.lock().expect("media controls lock");
         let current = state.current().cloned();
         let mut shown = self.shown.lock().expect("media shown lock");
-        if *shown != current {
+        let new_item = shown.item != current;
+        if new_item {
             let metadata = match &current {
                 Some(item) => MediaMetadata {
                     title: Some(&item.title),
@@ -66,7 +93,15 @@ impl MediaKeys {
                 None => MediaMetadata::default(),
             };
             let _ = controls.set_metadata(metadata);
-            shown.clone_from(&current);
+            shown.item.clone_from(&current);
+        }
+
+        let playing = state.playing && current.is_some();
+        let changed = new_item || playback_changed(shown.playback, playing, state.position);
+        // Kept on every update, so the next one compares against now, not the last change.
+        shown.playback = Some((playing, state.position));
+        if !changed {
+            return;
         }
 
         let progress = Some(MediaPosition(Duration::from_secs_f64(state.position.max(0.0))));
@@ -76,5 +111,25 @@ impl MediaKeys {
             (Some(_), false) => MediaPlayback::Paused { progress },
         };
         let _ = controls.set_playback(playback);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::playback_changed;
+
+    #[test]
+    fn playback_moving_on_is_not_a_change() {
+        assert!(!playback_changed(Some((true, 10.0)), true, 10.25));
+        assert!(!playback_changed(Some((false, 10.0)), false, 10.0));
+    }
+
+    #[test]
+    fn pausing_resuming_and_seeking_are_changes() {
+        assert!(playback_changed(None, true, 0.0));
+        assert!(playback_changed(Some((true, 10.0)), false, 10.25));
+        assert!(playback_changed(Some((false, 10.0)), true, 10.0));
+        assert!(playback_changed(Some((true, 10.0)), true, 60.0)); // seek forward
+        assert!(playback_changed(Some((true, 60.0)), true, 5.0)); // seek back or restart
     }
 }
