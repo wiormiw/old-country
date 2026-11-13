@@ -176,6 +176,9 @@ desktop/
   Next still moves on. Both are remembered between sessions.
 - **No crackles under load**: decoding runs a few seconds ahead on its own thread, so the sound card's
   real-time callback only copies ready samples, through a roomier 4096-frame output buffer.
+- **Silent when paused**: the sound card stream opens when a song plays and closes 3 seconds after
+  it pauses or stops, so the desktop doesn't show the app as playing audio (KDE's speaker icon on the
+  task bar). The paused song and its position are kept while it's closed.
 - **Media keys**: MPRIS (souvlaki), so KDE's media controls show the current song and work while the
   window is hidden.
 

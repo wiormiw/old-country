@@ -8,12 +8,13 @@
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use shared::{PlayerState, QueueItem, RepeatMode};
 
 use super::cache::AudioCache;
 use super::decoder::Decoder;
+use super::output::Output;
 use super::queue::Queue;
 use super::source::DecodedSource;
 
@@ -112,21 +113,6 @@ impl PlayerHandle {
     }
 }
 
-/// Output buffer in frames (~85 ms at 48 kHz). rodio's default (~43 ms) underruns when the
-/// desktop is busy; music playback doesn't need low latency, it needs no crackles.
-const OUTPUT_BUFFER_FRAMES: u32 = 4_096;
-
-/// The default device with a roomier buffer, falling back to rodio's own choice of device and
-/// settings if that's refused.
-fn open_output() -> Result<rodio::MixerDeviceSink, rodio::DeviceSinkError> {
-    rodio::DeviceSinkBuilder::from_default_device()
-        .and_then(|builder| builder.with_buffer_size(rodio::cpal::BufferSize::Fixed(OUTPUT_BUFFER_FRAMES)).open_stream())
-        .or_else(|error| {
-            log::warn!("couldn't open audio with a {OUTPUT_BUFFER_FRAMES}-frame buffer ({error}); using defaults");
-            rodio::DeviceSinkBuilder::open_default_sink()
-        })
-}
-
 struct Engine {
     inbox: mpsc::Receiver<Command>,
     outbox: Sender<Command>,
@@ -147,37 +133,33 @@ struct Engine {
 
 impl Engine {
     fn run(mut self, emit: impl Fn(&PlayerState)) {
-        // The device sink must outlive the player; if there's no audio device, keep the queue
-        // working and say why nothing plays.
-        let sink = open_output();
-        let output = match &sink {
-            Ok(sink) => {
-                let player = rodio::Player::connect_new(sink.mixer());
-                player.set_volume(self.volume as rodio::Float);
-                Some(player)
-            }
-            Err(error) => {
-                log::error!("no audio output: {error}");
-                self.error = Some(format!("No audio output device is available: {error}"));
-                None
-            }
-        };
+        // The sound card stream is open only while playing (see `output`), so a paused or idle
+        // app isn't "playing audio" to the desktop. If there's no audio device, the queue keeps
+        // working and the error says why nothing plays.
+        let (player, mut audio) = Output::new();
+        player.set_volume(self.volume as rodio::Float);
+        let output = Some(&player);
 
         let mut last = PlayerState::default();
         loop {
             match self.inbox.recv_timeout(TICK) {
-                Ok(command) => self.handle(command, output.as_ref()),
+                Ok(command) => self.handle(command, output),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
             }
-            if let Some(player) = &output {
-                // A loaded track that has nothing left to play has ended.
-                if self.loaded && self.want_playing && player.empty() {
-                    self.queue.advance(true);
-                    self.start(output.as_ref());
-                }
+            if self.want_playing
+                && let Err(error) = audio.open()
+            {
+                self.error = Some(error);
+                self.want_playing = false;
             }
-            let state = self.snapshot(output.as_ref());
+            audio.close_when_idle(self.want_playing, Instant::now());
+            // A loaded track that has nothing left to play has ended.
+            if self.loaded && self.want_playing && player.empty() {
+                self.queue.advance(true);
+                self.start(output);
+            }
+            let state = self.snapshot(output);
             if state != last {
                 *self.published.lock().expect("player state lock") = state.clone();
                 emit(&state);
@@ -309,11 +291,6 @@ impl Engine {
             return;
         };
         self.duration = item.duration;
-        if output.is_none() {
-            self.error = Some("No audio output device is available.".into());
-            return;
-        }
-
         self.buffering = true;
         let generation = self.generation;
         let cache = Arc::clone(&self.cache);
