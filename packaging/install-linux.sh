@@ -46,4 +46,9 @@ Categories=AudioVideo;Audio;Player;
 StartupWMClass=old-country
 EOF
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+# Tell the desktop the icon changed: newer folder times invalidate icon caches, and KDE rebuilds
+# its launcher cache. (Plasma's panel still keeps icons it has drawn until it restarts.)
+touch "$icons" "$icons"/*/apps
+command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 >/dev/null 2>&1 || true
+command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$icons" 2>/dev/null || true
 echo "Installed: $bin ($(du -h "$bin" | cut -f1)). Find \"old-country\" in the app launcher."
