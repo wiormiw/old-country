@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use shared::{
     AppError, DownloadStatus, Downloads, ImportReport, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, RepeatMode,
-    ScanStatus, Settings, Theme, Track, TrackDetail, YouTubeResult,
+    LiveStatus, ScanStatus, Settings, Theme, Track, TrackDetail, YouTubeResult,
 };
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -23,9 +23,17 @@ pub struct AppState {
     pub server: ServerUrl,
     pub settings: Mutex<Settings>,
     pub cache: Arc<AudioCache>,
+    /// The live connection's latest status (also pushed as an event when it changes).
+    pub live: Arc<Mutex<LiveStatus>>,
 }
 
 type Reply<T> = Result<T, AppError>;
+
+/// Whether changes made elsewhere are arriving live right now.
+#[tauri::command]
+pub fn live_status(state: State<'_, AppState>) -> LiveStatus {
+    *state.live.lock().expect("live status lock")
+}
 
 // --- Settings ---
 

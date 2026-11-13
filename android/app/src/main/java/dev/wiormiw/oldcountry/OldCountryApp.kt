@@ -7,6 +7,8 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import dev.wiormiw.oldcountry.data.ApiClient
 import dev.wiormiw.oldcountry.data.SettingsStore
+import dev.wiormiw.oldcountry.live.LiveUpdates
+import kotlinx.coroutines.flow.map
 import dev.wiormiw.oldcountry.playback.AudioCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -32,6 +34,9 @@ class OldCountryApp : Application(), SingletonImageLoader.Factory {
     val settings by lazy { SettingsStore(this, scope) }
     val api by lazy { ApiClient(http) { settings.settings.value.serverUrl } }
     val audioCache by lazy { AudioCache(this, http, settings) }
+
+    /** Changes made elsewhere, pushed by the server while the app is on screen. */
+    val live by lazy { LiveUpdates(http, settings.settings.map { it.serverUrl }, scope) }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context).components { add(OkHttpNetworkFetcherFactory(callFactory = { http })) }.build()

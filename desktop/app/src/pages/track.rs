@@ -6,7 +6,7 @@ use shared::timespan::display;
 
 use crate::components::{Art, ErrorView, Loading, open_picker};
 use crate::ipc;
-use crate::state::{problem_label, track_item, use_notice};
+use crate::state::{on_change, problem_label, track_item, use_notice};
 
 /// One song: what it is, where it plays from, and the playlists it's in.
 #[component]
@@ -14,6 +14,7 @@ pub fn TrackPage() -> impl IntoView {
     let params = use_params_map();
     let id = Memo::new(move |_| params.with(|p| p.get("id").unwrap_or_default()));
     let detail = LocalResource::new(move || ipc::get_track(id.get()));
+    on_change(|c| c.touches_tracks() || c.touches_playlist_list(), move || detail.refetch());
 
     view! {
         <section class="page">

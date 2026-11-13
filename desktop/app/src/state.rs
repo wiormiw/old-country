@@ -1,7 +1,7 @@
 //! App-wide reactive state, provided through Leptos context.
 
 use leptos::prelude::*;
-use shared::{AudioRef, ImportReport, PlayerState, PlaylistEntry, QueueItem, Theme, Track, YouTubeResult};
+use shared::{AudioRef, ImportReport, LibraryChanges, LiveStatus, PlayerState, PlaylistEntry, QueueItem, Theme, Track, YouTubeResult};
 
 use crate::ipc;
 
@@ -25,6 +25,47 @@ impl Notice {
     pub fn info(&self, message: impl Into<String>) {
         self.0.set(Some((false, message.into())));
     }
+}
+
+/// Live updates from the server: the connection's status, and the latest change it reported
+/// (numbered, so the same change twice still counts twice).
+#[derive(Clone, Copy)]
+pub struct Live {
+    pub status: RwSignal<LiveStatus>,
+    pub changes: RwSignal<(u64, LibraryChanges)>,
+}
+
+fn provide_live() {
+    let live = Live { status: RwSignal::new(LiveStatus::Off), changes: RwSignal::new((0, LibraryChanges::default())) };
+    ipc::on_live_status(move |status| live.status.set(status));
+    ipc::on_library_changes(move |changes| live.changes.update(|(n, last)| {
+        *n += 1;
+        *last = changes;
+    }));
+    leptos::task::spawn_local(async move {
+        if let Ok(status) = ipc::live_status().await {
+            live.status.set(status);
+        }
+    });
+    provide_context(live);
+}
+
+pub fn use_live() -> Live {
+    expect_context::<Live>()
+}
+
+/// Runs `action` each time the server reports a change that `wanted` accepts, for as long as the
+/// calling component is on screen. Pages use it to refetch what they show.
+pub fn on_change(wanted: impl Fn(&LibraryChanges) -> bool + 'static, action: impl Fn() + 'static) {
+    let live = use_live();
+    Effect::new(move |seen: Option<u64>| {
+        let (n, changes) = live.changes.get();
+        // The first run only notes where things stand; later runs are new changes.
+        if seen.is_some_and(|seen| seen != n) && wanted(&changes) {
+            action();
+        }
+        n
+    });
 }
 
 /// The colour theme the user picked. The page's `data-theme` attribute follows it.
@@ -78,6 +119,7 @@ pub fn use_theme() -> ThemeChoice {
 
 pub fn provide_app_state() {
     provide_theme();
+    provide_live();
     let player = RwSignal::new(PlayerState::default());
     provide_context(Player(player));
     provide_context(Notice(RwSignal::new(None)));

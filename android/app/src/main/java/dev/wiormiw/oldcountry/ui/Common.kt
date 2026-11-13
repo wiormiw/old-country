@@ -44,7 +44,10 @@ import androidx.navigation.NavHostController
 import dev.wiormiw.oldcountry.data.ApiClient
 import dev.wiormiw.oldcountry.data.ApiException
 import dev.wiormiw.oldcountry.data.SettingsStore
+import dev.wiormiw.oldcountry.live.LibraryChanges
+import dev.wiormiw.oldcountry.live.LiveUpdates
 import dev.wiormiw.oldcountry.playback.PlayerConnection
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -53,6 +56,7 @@ class AppEnv(
     val api: ApiClient,
     val settings: SettingsStore,
     val player: PlayerConnection,
+    val live: LiveUpdates,
     val nav: NavHostController,
     val snackbar: SnackbarHostState,
     val scope: CoroutineScope,
@@ -95,10 +99,21 @@ class Loader<T>(val state: State<Load<T>>, private val version: MutableState<Int
     }
 }
 
-/** Fetches `fetch` when `keys` change (or on [Loader.reload]), keeping the last answer while reloading. */
+/**
+ * Fetches `fetch` when `keys` change, on [Loader.reload], and when the server says something it
+ * shows changed (`refreshWhen`), keeping the last answer on screen while it reloads.
+ */
 @Composable
-fun <T> rememberLoad(vararg keys: Any?, fetch: suspend () -> T): Loader<T> {
+fun <T> rememberLoad(
+    vararg keys: Any?,
+    refreshWhen: (LibraryChanges) -> Boolean = { false },
+    fetch: suspend () -> T,
+): Loader<T> {
     val version = remember { mutableStateOf(0) }
+    val live = LocalEnv.current.live
+    LaunchedEffect(*keys) {
+        live.changes.filter(refreshWhen).collect { version.value++ }
+    }
     val state = remember(*keys) { mutableStateOf<Load<T>>(Load.Loading) }
     LaunchedEffect(*keys, version.value) {
         state.value = try {

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using OldCountry.Api.Common.Realtime;
 using OldCountry.Api.Features;
 using OldCountry.Api.Middleware;
 using OldCountry.Api.Persistence;
@@ -23,6 +24,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 builder.Services.AddFeatures();
+builder.Services.AddRealtime(builder.Environment);
 
 var app = builder.Build();
 
@@ -39,5 +41,6 @@ await app.MigrateDatabaseAsync();
 
 app.MapDefaultEndpoints();
 app.MapFeatures();
+app.MapRealtime();
 
 await app.RunAsync();

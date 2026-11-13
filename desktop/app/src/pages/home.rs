@@ -5,7 +5,8 @@ use leptos_router::components::A;
 
 use crate::components::{Art, ThemeToggle};
 use crate::ipc;
-use crate::state::{time_ago, use_player};
+use crate::state::{on_change, time_ago, use_live, use_player};
+use shared::{LibraryChanges, LiveStatus};
 
 /// How many playlists the Home page offers to jump back into.
 const RECENT_PLAYLISTS: usize = 6;
@@ -25,6 +26,9 @@ pub fn Home() -> impl IntoView {
     let player = use_player();
     let playlists = LocalResource::new(ipc::list_playlists);
     let songs = LocalResource::new(|| ipc::list_tracks(1, 1, None));
+    on_change(LibraryChanges::touches_playlist_list, move || playlists.refetch());
+    on_change(LibraryChanges::touches_tracks, move || songs.refetch());
+    let live = use_live();
     // The server's state, checked once on opening: Some(Ok(address)) or Some(Err(why)).
     let server = LocalResource::new(|| async {
         let settings = ipc::get_settings().await?;
@@ -55,7 +59,12 @@ pub fn Home() -> impl IntoView {
             {move || match server.get() {
                 None => view! { <p class="server-line muted">"Checking the server…"</p> }.into_any(),
                 Some(Ok(address)) => view! {
-                    <p class="server-line"><span class="dot dot-ok"></span>{format!("Connected to {address}")}</p>
+                    <p class="server-line">
+                        <span class="dot dot-ok"></span>{format!("Connected to {address}")}
+                        {move || (live.status.get() == LiveStatus::Live).then(|| view! {
+                            <span class="badge badge-offline" title="Changes made elsewhere show up on their own">"live"</span>
+                        })}
+                    </p>
                 }.into_any(),
                 Some(Err(error)) => view! {
                     <p class="server-line">

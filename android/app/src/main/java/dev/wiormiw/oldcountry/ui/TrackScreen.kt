@@ -33,7 +33,7 @@ import dev.wiormiw.oldcountry.playback.toQueueItem
 @Composable
 fun TrackScreen(id: String) {
     val env = LocalEnv.current
-    val detail = rememberLoad(id) { env.api.track(id) }
+    val detail = rememberLoad(id, refreshWhen = { it.touchesTracks || it.touchesPlaylistList }) { env.api.track(id) }
     var addTo by remember { mutableStateOf<List<String>?>(null) }
     var downloading by remember { mutableStateOf(false) }
 

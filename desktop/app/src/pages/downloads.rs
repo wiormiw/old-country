@@ -1,9 +1,10 @@
 use leptos::prelude::*;
+use shared::LibraryChanges;
 use shared::{AppError, DownloadState, Downloads as DownloadList};
 
 use crate::components::{Art, ErrorView, Loading};
 use crate::ipc;
-use crate::state::error_code_label;
+use crate::state::{on_change, error_code_label};
 
 #[component]
 pub fn Downloads() -> impl IntoView {
@@ -11,7 +12,8 @@ pub fn Downloads() -> impl IntoView {
 
     let refresh = move || leptos::task::spawn_local(async move { downloads.set(Some(ipc::youtube_downloads().await)) });
     refresh();
-    // Poll while anything is waiting or downloading.
+    on_change(LibraryChanges::touches_downloads, refresh);
+    // Poll while anything is waiting or downloading (a fallback when live updates are down).
     let handle = set_interval_with_handle(
         move || {
             let active = downloads.with_untracked(|d| {

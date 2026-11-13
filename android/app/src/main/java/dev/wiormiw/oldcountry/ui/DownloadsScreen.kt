@@ -25,15 +25,20 @@ import dev.wiormiw.oldcountry.data.DownloadState
 import dev.wiormiw.oldcountry.data.errorCodeLabel
 import dev.wiormiw.oldcountry.data.timeAgo
 import kotlinx.coroutines.delay
+import dev.wiormiw.oldcountry.live.LiveStatus
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 
 /** The server's YouTube downloads, refreshed every few seconds while any are waiting or running. */
 @Composable
 fun DownloadsScreen() {
     val env = LocalEnv.current
-    val downloads = rememberLoad { env.api.downloads() }
+    val downloads = rememberLoad(refreshWhen = { it.touchesDownloads }) { env.api.downloads() }
     val active = (downloads.state.value as? Load.Ready)?.value?.jobs?.any { it.state == DownloadState.Queued || it.state == DownloadState.Running } == true
-    LaunchedEffect(active) {
-        while (active) {
+    // The server says when downloads change; polling is only the fallback while that's down.
+    val live by env.live.status.collectAsState()
+    LaunchedEffect(active, live) {
+        while (active && live != LiveStatus.Live) {
             delay(3_000)
             downloads.reload()
         }

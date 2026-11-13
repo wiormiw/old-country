@@ -39,10 +39,14 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         player.connect()
+        // Live updates only while on screen: no battery spent on a connection nobody looks at.
+        // Coming back reconnects, and the reconnect makes every screen catch up.
+        app.live.start()
     }
 
     override fun onStop() {
         player.release()
+        app.live.stop()
         super.onStop()
     }
 }

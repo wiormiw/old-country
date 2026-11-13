@@ -86,6 +86,20 @@ fun LibraryScreen() {
         scanNote = runCatching { env.api.scanStatus() }.getOrNull()?.lastScan?.let { "Last scan ${timeAgo(it.finishedAt)}: ${it.added} added" }
     }
 
+    // Songs changed elsewhere: refetch the pages already shown and swap them in place, so the
+    // list neither empties nor jumps back to the top.
+    LaunchedEffect(search) {
+        env.live.changes.filter { it.touchesTracks }.collect {
+            if (loading) return@collect
+            val pages = ((tracks.size + PAGE_SIZE - 1) / PAGE_SIZE).coerceAtLeast(1)
+            val fresh = runCatching {
+                (1..pages).flatMap { page -> env.api.tracks(page, PAGE_SIZE, search.ifBlank { null }).also { total = it.totalCount }.items }
+            }.getOrNull() ?: return@collect
+            tracks.clear()
+            tracks += fresh.distinctBy { it.id }
+        }
+    }
+
     val list = rememberLazyListState()
     val nearEnd by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 } }
     LaunchedEffect(list, search) {

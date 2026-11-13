@@ -10,6 +10,63 @@ use crate::api::ProblemDetails;
 /// Event the core emits whenever playback state changes, and a few times a second while playing.
 pub const PLAYER_STATE_EVENT: &str = "player://state";
 
+/// Event the core emits when the server says something changed (see `src-tauri/src/live.rs`).
+pub const LIBRARY_CHANGES_EVENT: &str = "server://changes";
+
+/// Event the core emits when the live connection to the server comes up or goes down.
+pub const LIVE_STATUS_EVENT: &str = "server://live";
+
+/// The live connection to the server's change notifications.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LiveStatus {
+    /// No server set, or not started.
+    #[default]
+    Off,
+    Connecting,
+    /// Connected: changes made elsewhere show up on their own.
+    Live,
+    /// Lost; trying again.
+    Reconnecting,
+}
+
+/// What changed on the server: a hint to refetch, not the data. Mirrors the server's
+/// `LibraryChanges` (the hub's `Changed` message).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LibraryChanges {
+    /// Playlists created, changed or deleted (their ids).
+    pub playlists: Vec<String>,
+    /// Songs added, changed or removed (including becoming downloaded).
+    pub tracks: bool,
+    /// YouTube download jobs changed.
+    pub downloads: bool,
+    /// Refetch everything: the server fell behind, or the app was offline and may have missed some.
+    pub everything: bool,
+}
+
+impl LibraryChanges {
+    pub fn everything() -> Self {
+        Self { everything: true, ..Self::default() }
+    }
+
+    pub fn touches_playlist(&self, id: &str) -> bool {
+        self.everything || self.playlists.iter().any(|p| p == id)
+    }
+
+    pub fn touches_playlist_list(&self) -> bool {
+        self.everything || !self.playlists.is_empty()
+    }
+
+    pub fn touches_tracks(&self) -> bool {
+        self.everything || self.tracks
+    }
+
+    pub fn touches_downloads(&self) -> bool {
+        self.everything || self.downloads
+    }
+}
+
 /// Where a queued item's audio comes from on the server.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]

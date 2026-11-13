@@ -28,7 +28,7 @@ import dev.wiormiw.oldcountry.data.timeAgo
 @Composable
 fun PlaylistsScreen() {
     val env = LocalEnv.current
-    val playlists = rememberLoad { env.api.playlists() }
+    val playlists = rememberLoad(refreshWhen = { it.touchesPlaylistList }) { env.api.playlists() }
     var creating by remember { mutableStateOf(false) }
 
     Screen("Playlists", floating = {

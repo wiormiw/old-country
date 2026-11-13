@@ -4,7 +4,7 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use shared::{
-    AppError, DownloadStatus, Downloads, ImportReport, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, RepeatMode,
+    AppError, DownloadStatus, Downloads, ImportReport, LibraryChanges, LiveStatus, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, RepeatMode,
     ScanStatus, Settings, Theme, Track, TrackDetail, YouTubeResult,
 };
 use wasm_bindgen::prelude::*;
@@ -240,15 +240,35 @@ async fn fire(command: &str, args: impl Serialize) {
 
 /// Calls `handler` with every player state the core pushes. Listens for the app's lifetime.
 pub fn on_player_state(handler: impl Fn(PlayerState) + 'static) {
-    let closure = Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
-        let payload = js_sys::Reflect::get(&event, &JsValue::from_str("payload")).unwrap_or(JsValue::NULL);
-        match serde_wasm_bindgen::from_value::<PlayerState>(payload) {
-            Ok(state) => handler(state),
-            Err(error) => leptos::logging::warn!("unreadable player state: {error}"),
+    on_event(shared::PLAYER_STATE_EVENT, handler);
+}
+
+/// Calls `handler` whenever the server says something changed (another device, the YouTube
+/// sync, a download finishing). Listens for the app's lifetime.
+pub fn on_library_changes(handler: impl Fn(LibraryChanges) + 'static) {
+    on_event(shared::LIBRARY_CHANGES_EVENT, handler);
+}
+
+/// Calls `handler` when the live connection to the server comes up or goes down.
+pub fn on_live_status(handler: impl Fn(LiveStatus) + 'static) {
+    on_event(shared::LIVE_STATUS_EVENT, handler);
+}
+
+pub async fn live_status() -> Result<LiveStatus, AppError> {
+    call("live_status", NoArgs {}).await
+}
+
+/// Calls `handler` with the payload of every `event` the core emits, for the app's lifetime.
+fn on_event<T: DeserializeOwned>(event: &'static str, handler: impl Fn(T) + 'static) {
+    let closure = Closure::<dyn FnMut(JsValue)>::new(move |message: JsValue| {
+        let payload = js_sys::Reflect::get(&message, &JsValue::from_str("payload")).unwrap_or(JsValue::NULL);
+        match serde_wasm_bindgen::from_value::<T>(payload) {
+            Ok(value) => handler(value),
+            Err(error) => leptos::logging::warn!("unreadable {event} event: {error}"),
         }
     });
     leptos::task::spawn_local(async move {
-        listen(shared::PLAYER_STATE_EVENT, &closure).await;
+        listen(event, &closure).await;
         // The listener must live as long as the app.
         closure.forget();
     });

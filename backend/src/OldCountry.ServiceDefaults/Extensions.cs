@@ -51,10 +51,14 @@ public static class Extensions
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
                 .AddRuntimeInstrumentation()
-                .AddMeter("Npgsql"))
+                .AddMeter("Npgsql")
+                // SignalR: open connections and their durations.
+                .AddMeter("Microsoft.AspNetCore.Http.Connections"))
             .WithTracing(tracing => tracing
                 .AddSource(builder.Environment.ApplicationName)
                 .AddSource(ApplicationSources)
+                // SignalR: a span per hub method call, connect and disconnect.
+                .AddSource("Microsoft.AspNetCore.SignalR.Server")
                 .AddAspNetCoreInstrumentation(aspnet =>
                     // Probes every few seconds would otherwise be most of the traces.
                     aspnet.Filter = context =>

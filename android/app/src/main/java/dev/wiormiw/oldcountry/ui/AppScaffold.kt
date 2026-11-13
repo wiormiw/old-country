@@ -72,7 +72,7 @@ fun AppScaffold(player: PlayerConnection) {
     val nav = rememberNavController()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val env = remember(nav) { AppEnv(app.api, app.settings, player, nav, snackbar, scope) }
+    val env = remember(nav) { AppEnv(app.api, app.settings, player, app.live, nav, snackbar, scope) }
     // Home says when the server isn't set up yet, and leads to Settings.
     val start: Any = Route.Home
     var showPlayer by rememberSaveable { mutableStateOf(false) }

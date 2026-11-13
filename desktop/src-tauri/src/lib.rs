@@ -3,13 +3,14 @@
 
 pub mod api;
 pub mod commands;
+pub mod live;
 pub mod player;
 pub mod settings;
 
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
-use shared::PLAYER_STATE_EVENT;
+use shared::{LIBRARY_CHANGES_EVENT, LIVE_STATUS_EVENT, LibraryChanges, LiveStatus, PLAYER_STATE_EVENT};
 use tauri::{Emitter, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
@@ -29,6 +30,26 @@ fn window_handle(app: &tauri::App) -> Option<*mut std::ffi::c_void> {
 #[cfg(not(target_os = "windows"))]
 fn window_handle(_app: &tauri::App) -> Option<*mut std::ffi::c_void> {
     None
+}
+
+/// Passes the live connection's news to the UI as events.
+struct LiveEvents {
+    app: tauri::AppHandle,
+    status: Arc<Mutex<LiveStatus>>,
+}
+
+impl live::Listener for LiveEvents {
+    fn changed(&self, changes: LibraryChanges) {
+        let _ = self.app.emit(LIBRARY_CHANGES_EVENT, changes);
+    }
+
+    fn status(&self, status: LiveStatus) {
+        let mut current = self.status.lock().expect("live status lock");
+        if *current != status {
+            *current = status;
+            let _ = self.app.emit(LIVE_STATUS_EVENT, status);
+        }
+    }
 }
 
 /// Log file name (without extension) in the app's log folder.
@@ -97,6 +118,11 @@ pub fn run() {
                 let _ = media_keys.set(keys);
             }
 
+            // Changes made elsewhere (phone, YouTube sync, downloads) arrive from the server's hub.
+            let live = Arc::new(Mutex::new(LiveStatus::Off));
+            let listener = Arc::new(LiveEvents { app: app.handle().clone(), status: Arc::clone(&live) });
+            tauri::async_runtime::spawn(live::run(Arc::clone(&server), listener));
+
             #[cfg(debug_assertions)]
             watch_ui_script(app.handle().clone());
 
@@ -106,12 +132,14 @@ pub fn run() {
                 server,
                 settings: Mutex::new(settings),
                 cache,
+                live,
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::save_settings,
+            commands::live_status,
             commands::set_theme,
             commands::check_server,
             commands::list_tracks,

@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.wiormiw.oldcountry.data.ApiException
 import dev.wiormiw.oldcountry.data.timeAgo
+import dev.wiormiw.oldcountry.live.LiveStatus
 import java.time.LocalTime
 
 /** How many playlists Home offers to jump back into. */
@@ -69,8 +70,8 @@ fun HomeScreen() {
     val player by env.player.state.collectAsState()
     // Each reloads when the server address changes.
     val server = rememberLoad(settings.serverUrl) { env.api.checkServer(settings.serverUrl) }
-    val songs = rememberLoad(settings.serverUrl) { env.api.tracks(1, 1, null).totalCount }
-    val playlists = rememberLoad(settings.serverUrl) {
+    val songs = rememberLoad(settings.serverUrl, refreshWhen = { it.touchesTracks }) { env.api.tracks(1, 1, null).totalCount }
+    val playlists = rememberLoad(settings.serverUrl, refreshWhen = { it.touchesPlaylistList }) {
         env.api.playlists().sortedByDescending { it.updatedAt ?: it.createdAt }.take(RECENT_PLAYLISTS)
     }
 
@@ -178,8 +179,14 @@ private fun ServerLine(state: Load<Unit>) {
         when (state) {
             Load.Loading -> Text("Checking the server…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             is Load.Ready -> {
+                val live by env.live.status.collectAsState()
                 Dot(MaterialTheme.colorScheme.tertiary)
-                Text("Connected to ${settings.serverUrl}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "Connected to ${settings.serverUrl}" + if (live == LiveStatus.Live) " · live" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             is Load.Failed -> {
                 Dot(MaterialTheme.colorScheme.error)

@@ -93,6 +93,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.guava)
     implementation(libs.okhttp)
+    implementation(libs.signalr)
+    implementation(libs.kotlinx.coroutines.rx3)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
 

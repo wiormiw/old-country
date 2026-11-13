@@ -62,6 +62,7 @@ import dev.wiormiw.oldcountry.data.playlistDownloadMessage
 import dev.wiormiw.oldcountry.data.timeAgo
 import dev.wiormiw.oldcountry.playback.toQueueItem
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -71,6 +72,10 @@ fun PlaylistScreen(id: String) {
     var error by remember(id) { mutableStateOf<ApiException?>(null) }
     var version by remember { mutableIntStateOf(0) }
     val reload: () -> Unit = { version++ }
+    // Changed elsewhere (another device, the YouTube sync, a download finishing): reload.
+    LaunchedEffect(id) {
+        env.live.changes.filter { it.touchesPlaylist(id) || it.touchesTracks }.collect { reload() }
+    }
     LaunchedEffect(id, version) {
         try {
             playlist = env.api.playlist(id)

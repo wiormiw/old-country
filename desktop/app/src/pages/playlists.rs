@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use leptos::prelude::*;
+use shared::LibraryChanges;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map};
 use shared::timespan::display;
@@ -8,11 +9,12 @@ use shared::{AppError, Playlist, PlaylistDownloadReport, PlaylistEntry};
 
 use crate::components::{Art, ErrorView, Loading};
 use crate::ipc;
-use crate::state::{entry_item, import_message, is_lasting_problem, problem_label, time_ago, use_notice};
+use crate::state::{on_change, entry_item, import_message, is_lasting_problem, problem_label, time_ago, use_notice};
 
 #[component]
 pub fn Playlists() -> impl IntoView {
     let playlists = LocalResource::new(ipc::list_playlists);
+    on_change(LibraryChanges::touches_playlist_list, move || playlists.refetch());
     let name = RwSignal::new(String::new());
     let error = RwSignal::new(None::<AppError>);
     let creating = RwSignal::new(false);
@@ -98,6 +100,14 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
     let deleting = RwSignal::new(false);
     let name = RwSignal::new(playlist.name.clone());
     let description = RwSignal::new(playlist.description.clone().unwrap_or_default());
+    // Changed elsewhere (another device, the YouTube sync, a download finishing): reload,
+    // unless a rename is being typed here.
+    let this = playlist.id.clone();
+    on_change(move |changes| changes.touches_playlist(&this) || changes.touches_tracks(), move || {
+        if !editing.get_untracked() {
+            reload();
+        }
+    });
     let id = StoredValue::new(playlist.id.clone());
 
     // The rows as shown. Moves and removals change them here first, so they animate at once;

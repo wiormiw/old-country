@@ -1,11 +1,12 @@
 use leptos::prelude::*;
+use shared::LibraryChanges;
 use leptos_router::components::A;
 use shared::timespan::display;
 use shared::{ScanStatus, Track};
 
 use crate::components::{Art, ErrorView, Loading, open_picker};
 use crate::ipc;
-use crate::state::{track_item, use_notice};
+use crate::state::{on_change, track_item, use_notice};
 
 const PAGE_SIZE: u32 = 50;
 
@@ -35,6 +36,7 @@ pub fn Library() -> impl IntoView {
         let text = search.get();
         ipc::list_tracks(page.get(), PAGE_SIZE, (!text.trim().is_empty()).then_some(text))
     });
+    on_change(LibraryChanges::touches_tracks, move || tracks.refetch());
 
     view! {
         <section class="page">

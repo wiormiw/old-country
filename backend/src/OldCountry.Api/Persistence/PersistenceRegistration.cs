@@ -16,9 +16,12 @@ internal static class PersistenceRegistration
 
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<AuditableEntityInterceptor>();
+        builder.Services.AddSingleton<ChangeNotificationInterceptor>();
         builder.Services.AddDbContext<OldCountryDbContext>((provider, options) => options
             .UseNpgsql(connectionString)
-            .AddInterceptors(provider.GetRequiredService<AuditableEntityInterceptor>()));
+            .AddInterceptors(
+                provider.GetRequiredService<AuditableEntityInterceptor>(),
+                provider.GetRequiredService<ChangeNotificationInterceptor>()));
         return builder;
     }
 

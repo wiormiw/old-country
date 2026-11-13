@@ -34,6 +34,8 @@ symphonia-adapter-libopus = { version = "0.3.0", default-features = false }
 # Media keys and the desktop's media controls (MPRIS on Linux).
 souvlaki = "0.9.3"
 fastrand = "2.5.0"
+# Live updates from the server's SignalR hub, spoken directly over a WebSocket (see src/live.rs).
+tokio-tungstenite = { version = "0.30.0", features = ["native-tls"] }
 
 # Windows and macOS have no system libopus to link, so they build the bundled copy (needs CMake).
 [target.'cfg(not(target_os = "linux"))'.dependencies]
