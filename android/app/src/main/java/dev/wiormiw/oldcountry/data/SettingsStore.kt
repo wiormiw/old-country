@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.first
 
 enum class RepeatMode { Off, All, One }
 
+/** The colour theme: the system's choice, or always light or dark. */
+enum class ThemeMode { System, Light, Dark }
+
 data class Settings(
     /** Base URL of the old-country API, e.g. `http://192.168.1.10:5000`. */
     val serverUrl: String = "",
@@ -24,6 +27,7 @@ data class Settings(
     val cacheMaxMegabytes: Long = 2_048,
     val shuffle: Boolean = false,
     val repeat: RepeatMode = RepeatMode.Off,
+    val theme: ThemeMode = ThemeMode.System,
 )
 
 private val Context.store by preferencesDataStore("settings")
@@ -36,6 +40,7 @@ class SettingsStore(context: Context, scope: CoroutineScope) {
         val cacheMax = longPreferencesKey("cacheMaxMegabytes")
         val shuffle = booleanPreferencesKey("shuffle")
         val repeat = stringPreferencesKey("repeat")
+        val theme = stringPreferencesKey("theme")
     }
 
     private fun read(prefs: Preferences) = Settings(
@@ -43,6 +48,7 @@ class SettingsStore(context: Context, scope: CoroutineScope) {
         cacheMaxMegabytes = prefs[Keys.cacheMax] ?: Settings().cacheMaxMegabytes,
         shuffle = prefs[Keys.shuffle] ?: false,
         repeat = prefs[Keys.repeat]?.let { runCatching { RepeatMode.valueOf(it) }.getOrNull() } ?: RepeatMode.Off,
+        theme = prefs[Keys.theme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.System,
     )
 
     /** Read once at start-up (a small file), so the first screen already knows the server. */
@@ -54,4 +60,5 @@ class SettingsStore(context: Context, scope: CoroutineScope) {
     suspend fun setCacheMax(megabytes: Long) = store.edit { it[Keys.cacheMax] = megabytes }
     suspend fun setShuffle(on: Boolean) = store.edit { it[Keys.shuffle] = on }
     suspend fun setRepeat(mode: RepeatMode) = store.edit { it[Keys.repeat] = mode.name }
+    suspend fun setTheme(mode: ThemeMode) = store.edit { it[Keys.theme] = mode.name }
 }

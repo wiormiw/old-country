@@ -11,7 +11,30 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.OutlinedIconButton
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -121,38 +144,48 @@ fun PlaylistScreen(id: String) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(enabled = queue.isNotEmpty(), onClick = { env.player.play(queue, 0) }) { Text("Play all") }
-                                OutlinedButton(enabled = queue.isNotEmpty(), onClick = {
+                            // Icons only on a phone; with their names where there's room.
+                            val wide = LocalConfiguration.current.screenWidthDp >= 600
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ActionButton("Play all", Icons.Filled.PlayArrow, wide, primary = true, enabled = queue.isNotEmpty()) {
+                                    env.player.play(queue, 0)
+                                }
+                                ActionButton("Shuffle", Icons.Filled.Shuffle, wide, enabled = queue.isNotEmpty()) {
                                     env.player.setShuffle(true)
                                     env.player.play(queue, queue.indices.random())
-                                }) { Text("Shuffle") }
+                                }
                                 if (downloaded < fromYouTube) {
-                                    OutlinedButton(enabled = busy == null, onClick = {
+                                    ActionButton(
+                                        if (watching) "Downloading…" else "Download all", Icons.Filled.Download, wide,
+                                        enabled = busy == null, busy = busy == "download" || watching,
+                                    ) {
                                         busy = "download"
                                         env.call({ env.api.downloadPlaylist(id, retrySkipped = false) }, onDone = { busy = null }) {
                                             env.notice(playlistDownloadMessage(it))
                                             watching = it.queued + it.alreadyQueued > 0
                                         }
-                                    }) { Text(if (watching) "Downloading…" else "Download all") }
+                                    }
                                 }
                                 if (skipped > 0) {
-                                    OutlinedButton(enabled = busy == null, onClick = {
+                                    ActionButton("Retry skipped ($skipped)", Icons.Filled.Replay, wide, enabled = busy == null, busy = busy == "retry", badge = skipped) {
                                         busy = "retry"
                                         env.call({ env.api.downloadPlaylist(id, retrySkipped = true) }, onDone = { busy = null }) {
                                             env.notice(playlistDownloadMessage(it))
                                             watching = it.queued + it.alreadyQueued > 0
                                         }
-                                    }) { Text("Retry skipped ($skipped)") }
+                                    }
                                 }
                                 if (p.youTubeListId != null) {
-                                    OutlinedButton(enabled = busy == null, onClick = {
+                                    ActionButton(
+                                        if (busy == "sync") "Syncing…" else "Sync with YouTube", Icons.Filled.Sync, wide,
+                                        enabled = busy == null, busy = busy == "sync",
+                                    ) {
                                         busy = "sync"
                                         env.call({ env.api.syncPlaylist(id) }, onDone = { busy = null }) {
                                             env.notice(importMessage(it))
                                             reload()
                                         }
-                                    }) { Text(if (busy == "sync") "Syncing…" else "Sync with YouTube") }
+                                    }
                                 }
                             }
                             if (p.entries.size > 8) {
@@ -231,4 +264,48 @@ fun PlaylistScreen(id: String) {
 private fun move(env: AppEnv, id: String, p: Playlist, from: Int, to: Int, show: (Playlist) -> Unit, reload: () -> Unit) {
     show(p.copy(entries = p.entries.toMutableList().apply { add(to, removeAt(from)) }))
     env.call({ env.api.moveInPlaylist(id, from, to) }, onError = reload)
+}
+
+/**
+ * A playlist action: an icon button with its name as a tooltip (long-press) on a phone, or a
+ * button with icon and name when the screen is wide.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ActionButton(
+    label: String,
+    icon: ImageVector,
+    wide: Boolean,
+    primary: Boolean = false,
+    enabled: Boolean = true,
+    busy: Boolean = false,
+    badge: Int? = null,
+    onClick: () -> Unit,
+) {
+    val glyph: @Composable () -> Unit = {
+        if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(icon, null, Modifier.size(18.dp))
+    }
+    if (wide) {
+        val content: @Composable RowScope.() -> Unit = {
+            glyph()
+            Spacer(Modifier.width(8.dp))
+            Text(label)
+        }
+        if (primary) Button(onClick, enabled = enabled, content = content) else OutlinedButton(onClick, enabled = enabled, content = content)
+        return
+    }
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+        tooltip = { PlainTooltip { Text(label) } },
+        state = rememberTooltipState(),
+    ) {
+        val button: @Composable () -> Unit = {
+            if (primary) {
+                FilledIconButton(onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) { glyph() }
+            } else {
+                OutlinedIconButton(onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) { glyph() }
+            }
+        }
+        if (badge != null) BadgedBox(badge = { androidx.compose.material3.Badge { Text("$badge") } }) { button() } else button()
+    }
 }

@@ -54,7 +54,7 @@ fun SettingsScreen() {
     var used by remember { mutableLongStateOf(-1) }
     LaunchedEffect(Unit) { used = withContext(Dispatchers.IO) { app.audioCache.usedBytes } }
 
-    Screen("Settings") { modifier ->
+    Screen("Settings", back = env.nav.previousBackStackEntry != null) { modifier ->
         Column(
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -91,6 +91,15 @@ fun SettingsScreen() {
             status?.let { (ok, message) ->
                 Text(message, color = if (ok) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error)
             }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text("Appearance", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Follow the system, or always use the light or the dark theme.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ThemeToggle(Modifier.fillMaxWidth())
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Text("Songs kept on this phone", style = MaterialTheme.typography.titleMedium)

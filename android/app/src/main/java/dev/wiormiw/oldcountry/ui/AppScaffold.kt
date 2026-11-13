@@ -7,9 +7,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -45,6 +45,7 @@ import kotlinx.serialization.Serializable
 import kotlin.reflect.KClass
 
 object Route {
+    @Serializable data object Home
     @Serializable data object Library
     @Serializable data class Track(val id: String)
     @Serializable data object Playlists
@@ -56,12 +57,13 @@ object Route {
 
 private data class Tab(val label: String, val icon: ImageVector, val route: Any, val type: KClass<*>)
 
+// Settings isn't a tab: it opens from Home (and from errors that need it).
 private val tabs = listOf(
+    Tab("Home", Icons.Filled.Home, Route.Home, Route.Home::class),
     Tab("Library", Icons.Filled.LibraryMusic, Route.Library, Route.Library::class),
     Tab("Playlists", Icons.AutoMirrored.Filled.QueueMusic, Route.Playlists, Route.Playlists::class),
     Tab("YouTube", Icons.Filled.Search, Route.YouTube, Route.YouTube::class),
     Tab("Downloads", Icons.Filled.Download, Route.Downloads, Route.Downloads::class),
-    Tab("Settings", Icons.Filled.Settings, Route.Settings, Route.Settings::class),
 )
 
 @Composable
@@ -71,8 +73,8 @@ fun AppScaffold(player: PlayerConnection) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val env = remember(nav) { AppEnv(app.api, app.settings, player, nav, snackbar, scope) }
-    // The first run starts in Settings, to say where the server is.
-    val start: Any = remember { if (app.settings.settings.value.serverUrl.isBlank()) Route.Settings else Route.Library }
+    // Home says when the server isn't set up yet, and leads to Settings.
+    val start: Any = Route.Home
     var showPlayer by rememberSaveable { mutableStateOf(false) }
 
     CompositionLocalProvider(LocalEnv provides env) {
@@ -106,6 +108,7 @@ fun AppScaffold(player: PlayerConnection) {
             },
         ) { padding ->
             NavHost(nav, startDestination = start, modifier = Modifier.padding(padding)) {
+                composable<Route.Home> { HomeScreen() }
                 composable<Route.Library> { LibraryScreen() }
                 composable<Route.Track> { TrackScreen(it.toRoute<Route.Track>().id) }
                 composable<Route.Playlists> { PlaylistsScreen() }
