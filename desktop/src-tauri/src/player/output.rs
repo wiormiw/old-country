@@ -25,6 +25,9 @@ const CLOSE_AFTER: Duration = Duration::from_secs(3);
 const OUTPUT_BUFFER_FRAMES: u32 = 4_096;
 
 pub struct Output {
+    /// The controls: play, pause, volume, position. Use [`Output::clear`] and [`Output::seek`]
+    /// rather than the player's own, which wait for the sound card and would hang while it's closed.
+    pub player: rodio::Player,
     queue: Shared,
     device: Option<rodio::MixerDeviceSink>,
     /// When playback stopped needing the open stream.
@@ -32,11 +35,28 @@ pub struct Output {
 }
 
 impl Output {
-    /// The player (the controls: play, pause, volume, seek) and its output, closed for now.
-    pub fn new() -> (rodio::Player, Self) {
+    /// The player and its output, closed for now.
+    pub fn new() -> Self {
         let (player, queue) = rodio::Player::new();
-        let output = Self { queue: Shared(Arc::new(Mutex::new(queue))), device: None, idle_since: None };
-        (player, output)
+        Self { player, queue: Shared(Arc::new(Mutex::new(queue))), device: None, idle_since: None }
+    }
+
+    /// Drops whatever is queued and pauses. rodio does the dropping inside the sound card's
+    /// callback and waits for it, so the stream is opened first when there's something to drop.
+    pub fn clear(&mut self) -> Result<(), String> {
+        if !self.player.empty() {
+            self.open()?;
+        }
+        self.player.clear();
+        Ok(())
+    }
+
+    /// Seeks the current song. Like [`Output::clear`], rodio waits for the sound card to do it.
+    pub fn seek(&mut self, position: Duration) -> Result<(), String> {
+        if !self.player.empty() {
+            self.open()?;
+        }
+        self.player.try_seek(position).map_err(|error| error.to_string())
     }
 
     /// Opens the stream if it's closed. An error says why there's no sound.
@@ -135,7 +155,45 @@ mod tests {
     use super::*;
 
     fn closed() -> Output {
-        Output::new().1
+        Output::new()
+    }
+
+    /// Runs `f` on another thread and fails if it doesn't finish within two seconds.
+    fn finishes(f: impl FnOnce() + Send + 'static) -> bool {
+        let (done, finished) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            f();
+            let _ = done.send(());
+        });
+        finished.recv_timeout(Duration::from_secs(2)).is_ok()
+    }
+
+    fn song() -> impl Source + Send {
+        rodio::source::SineWave::new(440.0).take_duration(Duration::from_secs(60))
+    }
+
+    #[test]
+    fn clearing_or_seeking_a_paused_song_after_the_stream_closed_does_not_hang() {
+        // The bug: pause, wait for the stream to close, pick another song -> the player thread hung.
+        assert!(finishes(|| {
+            let mut output = closed();
+            if output.open().is_err() {
+                return; // no sound card here (CI): nothing to check
+            }
+            output.player.append(song());
+            output.player.pause();
+            output.device = None; // closed while paused
+            output.seek(Duration::from_secs(5)).expect("seek");
+            output.device = None;
+            output.clear().expect("clear");
+        }));
+    }
+
+    #[test]
+    fn clearing_an_empty_player_needs_no_stream() {
+        let mut output = closed();
+        assert!(output.clear().is_ok());
+        assert!(!output.is_open());
     }
 
     #[test]
@@ -148,8 +206,8 @@ mod tests {
 
     #[test]
     fn the_shared_queue_plays_what_the_player_appends() {
-        let (player, output) = Output::new();
-        player.append(rodio::source::SineWave::new(440.0).take_duration(Duration::from_millis(10)));
+        let output = Output::new();
+        output.player.append(rodio::source::SineWave::new(440.0).take_duration(Duration::from_millis(10)));
         let mut handle = output.queue.clone();
         // A second handle (as a reopened stream would get) reads the same queue.
         assert!(handle.by_ref().take(64).any(|sample| sample != 0.0));

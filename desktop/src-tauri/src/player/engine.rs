@@ -136,30 +136,29 @@ impl Engine {
         // The sound card stream is open only while playing (see `output`), so a paused or idle
         // app isn't "playing audio" to the desktop. If there's no audio device, the queue keeps
         // working and the error says why nothing plays.
-        let (player, mut audio) = Output::new();
-        player.set_volume(self.volume as rodio::Float);
-        let output = Some(&player);
+        let mut output = Output::new();
+        output.player.set_volume(self.volume as rodio::Float);
 
         let mut last = PlayerState::default();
         loop {
             match self.inbox.recv_timeout(TICK) {
-                Ok(command) => self.handle(command, output),
+                Ok(command) => self.handle(command, &mut output),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
             }
             if self.want_playing
-                && let Err(error) = audio.open()
+                && let Err(error) = output.open()
             {
                 self.error = Some(error);
                 self.want_playing = false;
             }
-            audio.close_when_idle(self.want_playing, Instant::now());
+            output.close_when_idle(self.want_playing, Instant::now());
             // A loaded track that has nothing left to play has ended.
-            if self.loaded && self.want_playing && player.empty() {
+            if self.loaded && self.want_playing && output.player.empty() {
                 self.queue.advance(true);
-                self.start(output);
+                self.start(&mut output);
             }
-            let state = self.snapshot(output);
+            let state = self.snapshot(&output);
             if state != last {
                 *self.published.lock().expect("player state lock") = state.clone();
                 emit(&state);
@@ -168,7 +167,7 @@ impl Engine {
         }
     }
 
-    fn handle(&mut self, command: Command, output: Option<&rodio::Player>) {
+    fn handle(&mut self, command: Command, output: &mut Output) {
         match command {
             Command::Play { items, start } => {
                 self.queue.replace(items, start);
@@ -205,7 +204,7 @@ impl Engine {
             Command::Resume => self.resume(output),
             Command::Next => self.next(output),
             Command::Prev => {
-                let position = output.map_or(0.0, |p| p.get_pos().as_secs_f64());
+                let position = output.player.get_pos().as_secs_f64();
                 if position > RESTART_THRESHOLD || self.queue.index() == Some(0) {
                     self.seek(0.0, output);
                 } else {
@@ -218,9 +217,7 @@ impl Engine {
             Command::SetRepeat(mode) => self.queue.set_repeat(mode),
             Command::SetVolume(volume) => {
                 self.volume = volume.clamp(0.0, 1.0);
-                if let Some(player) = output {
-                    player.set_volume(self.volume as rodio::Float);
-                }
+                output.player.set_volume(self.volume as rodio::Float);
             }
             Command::Stop => {
                 self.queue.clear();
@@ -236,13 +233,11 @@ impl Engine {
                     Ok(source) => {
                         self.failures = 0;
                         self.duration = source.duration().or(self.duration);
-                        if let Some(player) = output {
-                            player.append(source);
-                            if self.want_playing {
-                                player.play();
-                            }
-                            self.loaded = true;
+                        output.player.append(source);
+                        if self.want_playing {
+                            output.player.play();
                         }
+                        self.loaded = true;
                         self.prefetch_next();
                     }
                     Err(reason) => {
@@ -277,12 +272,15 @@ impl Engine {
     }
 
     /// Stops whatever plays and starts loading the queue's current item (if any).
-    fn start(&mut self, output: Option<&rodio::Player>) {
+    fn start(&mut self, output: &mut Output) {
         self.generation += 1;
         self.loaded = false;
         self.error = None;
-        if let Some(player) = output {
-            player.clear();
+        if let Err(error) = output.clear() {
+            self.error = Some(error);
+            self.buffering = false;
+            self.want_playing = false;
+            return;
         }
         let Some(item) = self.queue.current().cloned() else {
             self.buffering = false;
@@ -306,41 +304,36 @@ impl Engine {
         });
     }
 
-    fn pause(&mut self, output: Option<&rodio::Player>) {
+    fn pause(&mut self, output: &mut Output) {
         self.want_playing = false;
-        if let Some(player) = output {
-            player.pause();
-        }
+        output.player.pause();
     }
 
-    fn resume(&mut self, output: Option<&rodio::Player>) {
+    fn resume(&mut self, output: &mut Output) {
         self.want_playing = true;
-        match output {
-            Some(player) if self.loaded => player.play(),
-            _ if !self.buffering => self.start(output),
-            _ => {}
+        if self.loaded {
+            output.player.play();
+        } else if !self.buffering {
+            self.start(output);
         }
     }
 
     /// The Next button: always another song (repeat-one only replays songs that end).
-    fn next(&mut self, output: Option<&rodio::Player>) {
+    fn next(&mut self, output: &mut Output) {
         self.queue.advance(false);
         self.start(output);
     }
 
-    fn seek(&mut self, seconds: f64, output: Option<&rodio::Player>) {
-        if let (Some(player), true) = (output, self.loaded)
-            && let Err(error) = player.try_seek(Duration::from_secs_f64(seconds.max(0.0)))
+    fn seek(&mut self, seconds: f64, output: &mut Output) {
+        if self.loaded
+            && let Err(error) = output.seek(Duration::from_secs_f64(seconds.max(0.0)))
         {
             log::warn!("seek failed: {error}");
         }
     }
 
-    fn snapshot(&self, output: Option<&rodio::Player>) -> PlayerState {
-        let position = match output {
-            Some(player) if self.loaded => player.get_pos().as_secs_f64(),
-            _ => 0.0,
-        };
+    fn snapshot(&self, output: &Output) -> PlayerState {
+        let position = if self.loaded { output.player.get_pos().as_secs_f64() } else { 0.0 };
         PlayerState {
             queue: self.queue.items().to_vec(),
             index: self.queue.index(),
