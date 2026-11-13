@@ -20,7 +20,7 @@ The backend runs on a home server; the apps talk to it over the LAN.
 
 ## Installing the apps
 
-Download them from [Releases](https://github.com/wiormiw/old-country/releases):
+Download them from [Releases](https://github.com/wiormiw/old-country/releases) (desktop and Android are released separately):
 
 | System | File | Notes |
 |---|---|---|
@@ -29,7 +29,7 @@ Download them from [Releases](https://github.com/wiormiw/old-country/releases):
 | Any Linux | `old-country_<version>_amd64.AppImage` | `chmod +x` it and run it |
 | Windows | `old-country_<version>_x64-setup.exe` or `.msi` | SmartScreen may warn because the app isn't code-signed: **More info → Run anyway** |
 | macOS | `old-country_<version>_aarch64.dmg` (Apple Silicon) or `_x64.dmg` (Intel) | Not notarized: the first time, right-click the app and choose **Open** |
-| Android 8+ | `old-country_<version>_android.apk` | Allow installing from your browser or file manager when asked; later versions install over it |
+| Android 8+ | `old-country_<version>_android.apk` (an Android release) | Allow installing from your browser or file manager when asked; later versions install over it |
 
 On first start, open **Settings** and enter the server address as that device reaches it (e.g.
 `http://192.168.1.10:5000` on the same Wi-Fi).
@@ -242,15 +242,22 @@ android/app/src/main/java/dev/wiormiw/oldcountry/
 
 ## Making a release
 
-Set the version in `desktop/Cargo.toml` (the Android app takes it from there too), commit, then tag:
+The desktop and Android apps are released separately, each with its own version and tag:
+
+| App | Version in | Tag | Workflow |
+|---|---|---|---|
+| Desktop | `desktop/Cargo.toml` | `desktop-v0.1.0` | [release-desktop.yml](.github/workflows/release-desktop.yml): Linux, Windows, macOS (Apple Silicon and Intel) |
+| Android | `appVersion` in `android/gradle.properties` | `android-v0.1.0` | [release-android.yml](.github/workflows/release-android.yml): the signed APK |
+
+Bump the version, commit, then tag and push, e.g.:
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+git tag android-v0.1.1 && git push origin android-v0.1.1
 ```
 
-The [Release workflow](.github/workflows/release.yml) builds the desktop app on Linux, Windows and
-macOS (Apple Silicon and Intel) and the signed Android APK, and attaches them all to a **draft**
-release. Check it over on GitHub and press **Publish**. It can also be started from the Actions tab.
+Each workflow attaches its files to a **draft** release; check it over on GitHub and press
+**Publish**. A tag that doesn't match the version in the file is refused. Both can also be started
+from the Actions tab.
 
 The APK is signed with a release key kept out of the repository. CI reads it from four repository
 secrets (**Settings → Secrets and variables → Actions**):

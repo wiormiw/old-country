@@ -1,0 +1,90 @@
+# Builds the desktop app for Linux, Windows and macOS and attaches the installers to a draft
+# GitHub release, to check over and then publish.
+#
+#   git tag desktop-v0.1.0 && git push origin desktop-v0.1.0     # or run it from the Actions tab
+#
+# The version is desktop/Cargo.toml's; the check job stops a tag that doesn't match it.
+name: Release desktop
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Version matches the tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          version=$(sed -nE 's/^version = "([^"]+)"/\1/p' desktop/Cargo.toml | head -1)
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "desktop-v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match desktop/Cargo.toml's version $version."
+            exit 1
+          fi
+
+  desktop:
+    needs: check
+    name: Desktop (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-22.04 # older glibc, so the .deb/.rpm/AppImage run on more distributions
+            args: ""
+          - name: Windows x64
+            os: windows-latest
+            args: ""
+          - name: macOS Apple Silicon
+            os: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - name: macOS Intel
+            os: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf xdg-utils \
+            libopus-dev libasound2-dev libdbus-1-dev libssl-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown${{ matrix.target && format(',{0}', matrix.target) || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+          key: ${{ matrix.target }}
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop
+          tagName: desktop-v__VERSION__
+          releaseName: old-country desktop v__VERSION__
+          releaseBody: See the README for installing on each system. The macOS app isn't notarized; the first time, right-click it and choose Open.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+

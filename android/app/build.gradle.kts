@@ -6,10 +6,8 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-// The version comes from the release tag in CI (-PappVersion=0.1.0), else from the desktop app's.
-val appVersion: String = (findProperty("appVersion") as String?)
-    ?: Regex("""(?m)^version\s*=\s*"([^"]+)"""")
-        .find(rootDir.resolve("../desktop/Cargo.toml").readText())!!.groupValues[1]
+// The app's version: `appVersion` in gradle.properties (the release workflow checks the tag matches).
+val appVersion: String = property("appVersion") as String
 
 // 1.2.3 -> 10203, so each release installs over the last one.
 val appVersionCode: Int = appVersion.substringBefore('-').split('.').map(String::toInt)
