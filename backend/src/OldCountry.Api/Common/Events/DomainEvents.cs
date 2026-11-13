@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OldCountry.Domain.Common;
 
 namespace OldCountry.Api.Common.Events;
@@ -39,14 +40,23 @@ internal sealed class DomainEventFeed
 internal sealed class DomainEventHandlers
 {
     private readonly Dictionary<Type, List<Func<IServiceProvider, IDomainEvent, CancellationToken, Task>>> _byType = [];
+    private readonly HashSet<(Type Event, Type Handler)> _registered = [];
 
-    public void Add<TEvent, THandler>()
+    /// <summary>
+    /// Adds a handler for an event. Several different handlers per event are fine; the same pair
+    /// added twice is kept once, so a repeated registration can't make it run twice.
+    /// </summary>
+    /// <returns>Whether it was new.</returns>
+    public bool Add<TEvent, THandler>()
         where TEvent : IDomainEvent
         where THandler : IDomainEventHandler<TEvent>
     {
+        if (!_registered.Add((typeof(TEvent), typeof(THandler)))) return false;
         if (!_byType.TryGetValue(typeof(TEvent), out var handlers)) _byType[typeof(TEvent)] = handlers = [];
+        // The concrete handler, from the event's own scope: a class may handle several event types.
         handlers.Add((services, domainEvent, cancellationToken) =>
             services.GetRequiredService<THandler>().Handle((TEvent)domainEvent, cancellationToken));
+        return true;
     }
 
     public IReadOnlyList<Func<IServiceProvider, IDomainEvent, CancellationToken, Task>> For(Type eventType) =>
@@ -95,8 +105,12 @@ internal sealed partial class DomainEventDispatcher(
 
 internal static class DomainEventRegistration
 {
+    /// <summary>The feed, the handler registry and the dispatcher. Calling it again changes nothing.</summary>
     public static IServiceCollection AddDomainEvents(this IServiceCollection services)
     {
+        // A second registry would split the handlers between two instances, and the dispatcher
+        // would only see the last one's.
+        if (Registry(services) is not null) return services;
         services.AddSingleton<DomainEventFeed>();
         services.AddSingleton(new DomainEventHandlers());
         services.AddHostedService<DomainEventDispatcher>();
@@ -108,10 +122,11 @@ internal static class DomainEventRegistration
         where TEvent : IDomainEvent
         where THandler : class, IDomainEventHandler<TEvent>
     {
-        var registry = services.LastOrDefault(d => d.ServiceType == typeof(DomainEventHandlers))?.ImplementationInstance as DomainEventHandlers
-            ?? throw new InvalidOperationException("Call AddDomainEvents() before adding handlers.");
-        registry.Add<TEvent, THandler>();
-        services.AddScoped<THandler>();
+        var registry = Registry(services) ?? throw new InvalidOperationException("Call AddDomainEvents() before adding handlers.");
+        if (registry.Add<TEvent, THandler>()) services.TryAddScoped<THandler>();
         return services;
     }
+
+    private static DomainEventHandlers? Registry(IServiceCollection services) =>
+        services.SingleOrDefault(d => d.ServiceType == typeof(DomainEventHandlers))?.ImplementationInstance as DomainEventHandlers;
 }
