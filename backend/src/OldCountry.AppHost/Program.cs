@@ -1,6 +1,6 @@
 // Local development: Postgres in a persistent container plus the API, with the Aspire dashboard.
-// Fixed ports so the desktop app's server address never changes:
-//   API       http://localhost:5000   (src/OldCountry.Api/Properties/launchSettings.json)
+// Fixed ports so the apps' server address never changes:
+//   API       http://localhost:5000, and http://<LAN address>:5000 from other devices
 //   Postgres  localhost:55432, user "postgres", database "oldcountry"
 // The Postgres password lives in this project's user secrets, not in the repo:
 //   dotnet user-secrets set Parameters:postgres-password <password> --project src/OldCountry.AppHost
@@ -21,7 +21,10 @@ var postgres = builder.AddPostgres("postgres", password: password, port: 55432)
 // The name must match PersistenceRegistration.ConnectionStringName in the API.
 var database = postgres.AddDatabase("oldcountry");
 
+// Reachable from the home network, not just this computer, so phones and other computers can use
+// it: http://<this computer's LAN address>:5000. (The firewall must allow port 5000 too.)
 var api = builder.AddProject<Projects.OldCountry_Api>("api")
+    .WithEndpoint("http", endpoint => endpoint.TargetHost = "0.0.0.0")
     .WithReference(database)
     .WaitFor(database);
 

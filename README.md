@@ -66,9 +66,13 @@ dotnet run --project src/OldCountry.AppHost
 
 | What | Where |
 |---|---|
-| API | `http://localhost:5000` (set this in the desktop app's Settings) |
+| API | `http://localhost:5000` on this computer; `http://<its LAN address>:5000` from a phone or another computer (set it in the app's Settings) |
 | Aspire dashboard | `http://localhost:15888` (the login link is printed at startup) |
 | PostgreSQL | `localhost:55432`, user `postgres`, database `oldcountry`, data in a persistent Docker volume |
+
+To use it from a phone, the firewall has to let the home network in on port 5000, e.g. with ufw:
+`sudo ufw allow from 192.168.1.0/24 to any port 5000 proto tcp`. Use `http://` (not https) and
+port 5000; other ports in the Aspire dashboard are internal and change on every start.
 
 The Postgres password is an Aspire secret kept in the AppHost's user secrets, not in the repo. Set it
 once, and point the API at your music:
