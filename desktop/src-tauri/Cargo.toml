@@ -35,6 +35,10 @@ symphonia-adapter-libopus = { version = "0.3.0", default-features = false }
 souvlaki = "0.9.3"
 fastrand = "2.5.0"
 
+# Windows and macOS have no system libopus to link, so they build the bundled copy (needs CMake).
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+symphonia-adapter-libopus = { version = "0.3.0", features = ["bundled"] }
+
 [dev-dependencies]
 tempfile = "3"
 wiremock = "0.6.5"

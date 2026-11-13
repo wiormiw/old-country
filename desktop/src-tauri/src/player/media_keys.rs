@@ -45,8 +45,13 @@ fn playback_changed(last: Option<(bool, f64)>, playing: bool, position: f64) -> 
 
 impl MediaKeys {
     /// Registers with the desktop. `None` (logged) when there's no session bus, e.g. headless.
-    pub fn start(player: PlayerHandle) -> Option<Self> {
-        let config = PlatformConfig { display_name: "old-country", dbus_name: "old_country", hwnd: None };
+    /// `hwnd` is the main window's handle, which Windows needs (souvlaki panics without one there).
+    pub fn start(player: PlayerHandle, hwnd: Option<*mut std::ffi::c_void>) -> Option<Self> {
+        if cfg!(target_os = "windows") && hwnd.is_none() {
+            log::warn!("media keys unavailable: no window handle");
+            return None;
+        }
+        let config = PlatformConfig { display_name: "old-country", dbus_name: "old_country", hwnd };
         let mut controls = MediaControls::new(config)
             .map_err(|e| log::warn!("media keys unavailable: {e:?}"))
             .ok()?;

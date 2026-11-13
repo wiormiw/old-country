@@ -19,6 +19,18 @@ use crate::player::{PlayerHandle, StartSettings};
 use crate::player::cache::AudioCache;
 use crate::player::media_keys::MediaKeys;
 
+/// The main window's native handle, which the Windows media controls attach to.
+#[cfg(target_os = "windows")]
+fn window_handle(app: &tauri::App) -> Option<*mut std::ffi::c_void> {
+    let window = app.get_webview_window("main")?;
+    window.hwnd().map(|hwnd| hwnd.0).map_err(|e| log::warn!("no window handle: {e}")).ok()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn window_handle(_app: &tauri::App) -> Option<*mut std::ffi::c_void> {
+    None
+}
+
 /// Log file name (without extension) in the app's log folder.
 pub const LOG_FILE: &str = "old-country";
 
@@ -81,7 +93,7 @@ pub fn run() {
                     keys.update(state);
                 }
             });
-            if let Some(keys) = MediaKeys::start(player.clone()) {
+            if let Some(keys) = MediaKeys::start(player.clone(), window_handle(app)) {
                 let _ = media_keys.set(keys);
             }
 
