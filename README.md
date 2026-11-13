@@ -7,6 +7,8 @@ A personal music player: your offline library plus YouTube Music, in one place.
 - **YouTube Music**: search, play, download for offline, and import playlists or your liked songs.
 - **Playlist sync**: an imported playlist stays linked to YouTube Music. The server checks it every 6 hours (or when you press **Sync**) and appends songs added on YouTube since; your renames, reordering and removals are kept.
 - **Downloads**: one song or a whole playlist ("Download all"), queued in the database so they survive restarts, paced so YouTube doesn't block you, and songs YouTube refuses are remembered to retry later.
+- **Live updates**: change something on one device (or let the YouTube sync or a download do it) and every open app shows it within a second, over SignalR.
+- **Home and themes**: a welcome page with what's playing, the server's status and recent playlists; a light and a dark theme (or the system's), with song thumbnails everywhere.
 - **Desktop app** (Linux, Windows, macOS): native playback with media keys, shuffle and repeat, an offline audio cache, a layout that fits a narrow window, and one window only (starting it again brings the open one forward).
 - **Android app**: the same features, with background playback, lock-screen and notification controls, and songs kept on the phone for offline replays.
 
@@ -36,7 +38,14 @@ On first start, open **Settings** and enter the server address as that device re
 
 ## Screenshots
 
-![Library: search, formats, and the now-playing bar](docs/screenshots/library.png)
+Desktop, with demo data (the screenshots never show a real library):
+
+| | |
+|---|---|
+| ![Home in the light theme: greeting, server status, now playing, shortcuts, recent playlists](docs/screenshots/home.png) | ![Home in the dark theme](docs/screenshots/home-dark.png) |
+| **Home**, light theme ("bone and ember") | **Home**, dark theme ("soot and storm"); "live" means changes arrive on their own |
+
+![Library: thumbnails, search, formats, and the now-playing bar](docs/screenshots/library.png)
 
 | | |
 |---|---|
@@ -47,7 +56,7 @@ On first start, open **Settings** and enter the server address as that device re
 | ![Queue drawer in shuffle order with repeat-all on](docs/screenshots/queue-shuffle.png) | ![Song page: format, quality, file, and the playlists it's in](docs/screenshots/song.png) |
 | **Queue**: shuffle order, repeat-all on | **Song page**: where it plays from, quality, file, playlists |
 | ![Settings with the logs panel](docs/screenshots/settings.png) | ![The app in a narrow window](docs/screenshots/narrow.png) |
-| **Settings**: server address, cache size, where the logs are | **Narrow window**: the sidebar becomes a top bar |
+| **Settings**: server address, cache size, theme, where the logs are | **Narrow window**: the sidebar becomes a top bar |
 
 ## Running the backend
 
@@ -182,6 +191,8 @@ desktop/
   app/         Leptos UI (wasm): pages, now-playing bar; talks only to the core
   src-tauri/   Tauri core: settings, API client, Tauri commands, the player
     src/player/  cache (progressive download), decoder (symphonia + libopus), engine (thread + queue), media keys
+    src/live.rs  live updates: a small SignalR client for the server's hub
+  app/dev/mock-tauri.js  demo data, for looking at the UI in a browser
 ```
 
 - **The UI never does HTTP.** Every server call is a Tauri command run by the core with reqwest,
@@ -201,8 +212,14 @@ desktop/
 - **Silent when paused**: the sound card stream opens when a song plays and closes 3 seconds after
   it pauses or stops, so the desktop doesn't show the app as playing audio (KDE's speaker icon on the
   task bar). The paused song and its position are kept while it's closed.
-- **Media keys**: MPRIS (souvlaki), so KDE's media controls show the current song and work while the
-  window is hidden.
+- **Media keys**: MPRIS (souvlaki), so KDE's media controls show the current song (and its cover)
+  and work while the window is hidden.
+- **Themes**: System, Light or Dark, saved with the settings and cached for `app/theme.js`, which
+  applies it before the app loads so it never flashes the other one.
+
+**Looking at the UI without a server** (e.g. for screenshots): `trunk serve` in `desktop/app`, then
+open `http://localhost:1420` in a browser with `app/dev/mock-tauri.js` loaded first (Playwright's
+`addInitScript`, or paste it in the console and reload): it stands in for the Tauri bridge with demo data.
 
 **Tests**: `cargo test --workspace` decodes generated FLAC, MP3, AAC, Vorbis, Opus (Ogg and WebM)
 and WAV files (needs ffmpeg), and covers the progressive reader, the queue, the API client against a
@@ -241,6 +258,11 @@ android/app/src/main/java/dev/wiormiw/oldcountry/
   address keeps it. Least recently played go first once it's full (2 GB by default, set in Settings).
   The next song is fetched while the current one plays.
 - **Skips what can't play**: up to 3 unplayable songs in a row are skipped, like the desktop.
+- **Home and themes**: Home is the first tab (Settings opens from its gear); System, Light or Dark,
+  with the status bar following. Playlist actions are icon buttons on a phone (long-press for the
+  name) and gain their labels from 600dp wide.
+- **Live updates**: see [Live updates](#live-updates-signalr); screens refetch only for changes
+  that concern them, and the library refreshes in place instead of jumping to the top.
 - **Plain HTTP is allowed** (`network_security_config.xml`), since the server is usually
   `http://` on the home network.
 
@@ -293,6 +315,7 @@ tail -f ~/.local/share/dev.wiormiw.oldcountry/logs/old-country.log
 
 | Area | Endpoints |
 |---|---|
+| Live updates | `/hubs/library` (SignalR): one server-to-app message, `Changed { playlists, tracks, downloads, everything }` |
 | Tracks | `POST /api/tracks`, `GET /api/tracks`, `GET /api/tracks/{id}`, `GET /api/tracks/{id}/audio` |
 | Library scans | `POST /api/tracks/scans`, `GET /api/tracks/scans/latest` |
 | Playlists | `POST/GET /api/playlists`, `GET/PUT/DELETE /api/playlists/{id}`, `POST /api/playlists/{id}/tracks`, `DELETE /api/playlists/{id}/tracks/{position}`, `POST /api/playlists/{id}/tracks/move` |
@@ -322,6 +345,43 @@ backend/
 - **Value objects are records**: strongly-typed ids (`readonly record struct`) via model-wide converters, `LocalFile`/`AudioQuality` as EF Core complex types, playlist entries as a JSON complex collection. snake_case names throughout.
 - **Logging** only through source-generated `[LoggerMessage]` methods; CA1848/CA2254/CA1727/CA1873 are build errors.
 - **Security**: audio is served only from inside the configured library folders (symlinks resolved), whatever path a track claims.
+
+### Live updates (SignalR)
+
+Every app hears about changes made anywhere: another device, the YouTube sync, the library
+scanner, a download finishing. The hub carries hints, not data ("playlist X changed"); apps
+refetch what they show.
+
+```
+any save ─▶ ChangeNotificationInterceptor ─(after commit)─▶ ChangeFeed ─▶ ChangeBroadcaster ─▶ LibraryHub ─▶ apps
+            (EF Core: which playlists,                       (bounded     (merges bursts,       (/hubs/library,
+             songs, downloads it touched)                     channel)     250 ms / 2 s max)     Hub<ILibraryClient>)
+```
+
+- **Reported only after commit.** The interceptor gathers what each save touches and publishes it
+  when the transaction commits (or right away for a save that commits itself); a rollback drops
+  it. An app told too early would refetch old data, and one told about a rolled-back change would
+  refetch for nothing. Living in the save pipeline, it covers every writer without anyone
+  remembering to notify.
+- **Saves never wait on the network.** The feed is a bounded channel; a background service sends
+  from it, merging bursts (a 65-song import is one message). If it ever falls behind, it drops the
+  oldest and sends "everything changed" instead.
+- **Hub settings**: strongly typed (`Hub<ILibraryClient>`), keepalive 15 s and client timeout 30 s,
+  a 4 KB inbound limit (apps only listen), stateful reconnect, WebSockets with Server-Sent Events
+  and long polling as fallbacks, `[LoggerMessage]` logging of connections, and OpenTelemetry
+  traces and metrics.
+- **Tests** connect the real .NET SignalR client over WebSockets (`LibraryHubTests`), including
+  that a refused change tells nobody.
+
+The two apps connect differently:
+
+| | Android | Desktop |
+|---|---|---|
+| Client | The official SignalR Java client | Hand-written (`src-tauri/src/live.rs`): there's no official Rust client, and one message doesn't justify a community crate |
+| Connect | WebSockets, no negotiate | WebSockets, no negotiate: handshake, `\x1e`-separated JSON records, pings, close messages |
+| Reconnect | The Java client has none, so a supervisor does it: backoff 1 s → 30 s with jitter | The same loop in Rust |
+| When | While the app is on screen (no battery spent in the background) | While the app runs |
+| Catching up | Every (re)connect says "everything changed", so screens refetch whatever was missed | Same |
 
 ### YouTube Music notes
 
@@ -364,6 +424,9 @@ OLDCOUNTRY_LIVE_YTDLP=1 dotnet test --solution OldCountry.slnx   # also run agai
 Integration tests start a throwaway PostgreSQL with Testcontainers and are skipped when Docker isn't running. They use a fake yt-dlp; the live tests are the check that real yt-dlp output still parses.
 
 ## Notes
+
+- The icon's source is `docs/icon/icon.svg`: a record whose label is split ember and storm blue, the two themes. To change it, render it to PNG (`rsvg-convert -w 1024 -h 1024 docs/icon/icon.svg -o docs/icon/icon-1024.png`), then `cargo tauri icon ../docs/icon/icon-1024.png` in `desktop/` (delete the `android/` and `ios/` folders it adds); the Android launcher icons in `android/app/src/main/res/mipmap-*` are rendered from the same file.
+- Home's **Jump back in** lists the playlists changed most recently (renamed, songs added, synced), not the ones played most recently; the server doesn't record plays.
 
 - EF Core is pinned to `11.0.0-rc.3` because the Npgsql provider for EF Core 11 is still a release candidate and requires that exact build. Bump `EfCoreVersion` in `backend/Directory.Packages.props` together with Npgsql when it ships GA.
 - `dotnet tool restore` installs the matching `dotnet-ef` for migrations: `dotnet ef migrations add <Name> --project src/OldCountry.Api --output-dir Persistence/Migrations`.

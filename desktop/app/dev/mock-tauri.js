@@ -33,6 +33,8 @@
     queue: tracks.slice(0, 4).map(item), index: 1, order: [0, 1, 2, 3], shuffle: false, repeat: "off",
     playing: true, buffering: false, position: 74, duration: 355, volume: 0.7,
   };
+  if (location.hash === "#queue") Object.assign(player, { shuffle: true, repeat: "all", order: [2, 0, 1, 3], index: 0 });
+  entries[2] = { ...entries[2], downloadProblem: "PremiumOnly" };
   const answers = {
     get_settings: () => ({ serverUrl: "http://192.168.1.10:5000", cacheMaxMegabytes: 2048, volume: 0.7, shuffle: false, repeat: "off", theme }),
     set_theme: ({ theme: t }) => { theme = t; return null; },
@@ -47,8 +49,19 @@
       { jobId: "j1", videoId: "JGwWNGJdvx8", title: "Shape of You", state: "Running", queuedAt: ago(3) },
       { jobId: "j2", videoId: "hTWKbfoikeg", title: "Smells Like Teen Spirit", state: "Queued", queuedAt: ago(2) },
       { jobId: "j3", videoId: "fJ9rUzIMcZQ", title: "Bohemian Rhapsody", state: "Completed", trackId: "t2", queuedAt: ago(40), finishedAt: ago(38) },
+      { jobId: "j4", videoId: "kJQP7kiw5Fk", title: "Despacito", state: "Failed", errorCode: "youtube.premium_only", error: "This video is only available to Music Premium members", attempts: 1, queuedAt: ago(90), finishedAt: ago(89) },
     ] }),
     logs_folder: () => "~/.local/share/dev.wiormiw.oldcountry/logs",
+    live_status: () => "live",
+    youtube_search: () => [
+      ["dQw4w9WgXcQ", "Never Gonna Give You Up", "Rick Astley", "00:03:33", "t1", true],
+      ["yPYZpwSpKmA", "Together Forever", "Rick Astley", "00:03:25", null, false],
+      ["AC3Ejf7vPEY", "Whenever You Need Somebody", "Rick Astley", "00:03:54", null, false],
+      ["kHue-HaXXzg", "Cry for Help", "Rick Astley", "00:04:29", null, false],
+    ].map(([videoId, title, artist, duration, trackId, offline]) => ({
+      videoId, title, artist, duration, trackId: trackId ?? undefined, isAvailableOffline: offline,
+      thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+    })),
   };
   window.__TAURI__ = {
     core: {
