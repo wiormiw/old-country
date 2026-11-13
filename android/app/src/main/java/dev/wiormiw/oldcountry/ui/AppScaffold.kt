@@ -93,13 +93,7 @@ fun AppScaffold(player: PlayerConnection) {
                                 (tab.type == Route.Playlists::class && entry?.destination?.hasRoute(Route.Playlist::class) == true)
                             NavigationBarItem(
                                 selected = selected,
-                                onClick = {
-                                    nav.navigate(tab.route) {
-                                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
+                                onClick = { env.openTab(tab.route) },
                                 icon = { Icon(tab.icon, null) },
                                 label = { Text(tab.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             )

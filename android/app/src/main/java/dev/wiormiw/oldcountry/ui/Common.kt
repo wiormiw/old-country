@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import dev.wiormiw.oldcountry.data.ApiClient
 import dev.wiormiw.oldcountry.data.ApiException
@@ -61,6 +62,22 @@ class AppEnv(
     val snackbar: SnackbarHostState,
     val scope: CoroutineScope,
 ) {
+    /** Opens Settings over the current screen (once, however often it's asked). */
+    fun openSettings() = nav.navigate(Route.Settings) { launchSingleTop = true }
+
+    /**
+     * Switches to a tab, keeping each tab's place. Settings is a detour, not part of any tab: it's
+     * left first, or it would be saved with the tab it was opened from and come back with it.
+     */
+    fun openTab(route: Any) {
+        nav.popBackStack(Route.Settings, inclusive = true)
+        nav.navigate(route) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     /** Shows a short message at the bottom. */
     fun notice(message: String) {
         scope.launch {
@@ -149,7 +166,7 @@ fun ErrorBox(error: ApiException, onRetry: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onRetry) { Text("Try again") }
                 if (error.code.startsWith("server.")) {
-                    TextButton(onClick = { env.nav.navigate(Route.Settings) }) { Text("Settings") }
+                    TextButton(onClick = env::openSettings) { Text("Settings") }
                 }
             }
         }

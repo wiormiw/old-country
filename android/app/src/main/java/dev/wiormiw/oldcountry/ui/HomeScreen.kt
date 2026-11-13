@@ -76,7 +76,7 @@ fun HomeScreen() {
     }
 
     Screen("old-country", logo = true, actions = {
-        IconButton(onClick = { env.nav.navigate(Route.Settings) }) { Icon(Icons.Filled.Settings, "Settings") }
+        IconButton(onClick = env::openSettings) { Icon(Icons.Filled.Settings, "Settings") }
     }) { modifier ->
         LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
@@ -128,12 +128,12 @@ fun HomeScreen() {
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Shortcut("Library", Icons.Filled.LibraryMusic, Modifier.weight(1f)) { env.nav.navigate(Route.Library) }
-                        Shortcut("Playlists", Icons.AutoMirrored.Filled.QueueMusic, Modifier.weight(1f)) { env.nav.navigate(Route.Playlists) }
+                        Shortcut("Library", Icons.Filled.LibraryMusic, Modifier.weight(1f)) { env.openTab(Route.Library) }
+                        Shortcut("Playlists", Icons.AutoMirrored.Filled.QueueMusic, Modifier.weight(1f)) { env.openTab(Route.Playlists) }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Shortcut("YouTube", Icons.Filled.Search, Modifier.weight(1f)) { env.nav.navigate(Route.YouTube) }
-                        Shortcut("Downloads", Icons.Filled.Download, Modifier.weight(1f)) { env.nav.navigate(Route.Downloads) }
+                        Shortcut("YouTube", Icons.Filled.Search, Modifier.weight(1f)) { env.openTab(Route.YouTube) }
+                        Shortcut("Downloads", Icons.Filled.Download, Modifier.weight(1f)) { env.openTab(Route.Downloads) }
                     }
                 }
             }
@@ -191,7 +191,7 @@ private fun ServerLine(state: Load<Unit>) {
             is Load.Failed -> {
                 Dot(MaterialTheme.colorScheme.error)
                 Text(state.error.shortReason(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f, fill = false))
-                Button(onClick = { env.nav.navigate(Route.Settings) }, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Settings") }
+                Button(onClick = env::openSettings, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Settings") }
             }
         }
     }
