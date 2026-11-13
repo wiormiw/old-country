@@ -1,0 +1,6 @@
+<resources>
+    <!-- Compose draws everything; this only colours the window before the first frame. -->
+    <style name="Theme.OldCountry" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+</resources>

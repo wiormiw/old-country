@@ -7,14 +7,32 @@ A personal music player: your offline library plus YouTube Music, in one place.
 - **YouTube Music**: search, play, download for offline, and import playlists or your liked songs.
 - **Playlist sync**: an imported playlist stays linked to YouTube Music. The server checks it every 6 hours (or when you press **Sync**) and appends songs added on YouTube since; your renames, reordering and removals are kept.
 - **Downloads**: one song or a whole playlist ("Download all"), queued in the database so they survive restarts, paced so YouTube doesn't block you, and songs YouTube refuses are remembered to retry later.
-- **Desktop app**: native playback with media keys, shuffle and repeat, an offline audio cache, a layout that fits a narrow window, and one window only (starting it again brings the open one forward).
+- **Desktop app** (Linux, Windows, macOS): native playback with media keys, shuffle and repeat, an offline audio cache, a layout that fits a narrow window, and one window only (starting it again brings the open one forward).
+- **Android app**: the same features, with background playback, lock-screen and notification controls, and songs kept on the phone for offline replays.
 
 | Part | Stack | Status |
 |---|---|---|
 | [`backend/`](backend/) | .NET 11 / C# 15, ASP.NET Core minimal APIs, EF Core 11, PostgreSQL 18, Aspire | Working |
 | [`desktop/`](desktop/) | Tauri v2, Leptos 0.8 (Rust/WASM) UI, native playback (rodio, symphonia, libopus) | Working |
+| [`android/`](android/) | Kotlin, Jetpack Compose (Material 3), Media3 ExoPlayer + MediaSession | Working |
 
-The backend runs on a home server; the desktop app talks to it over the LAN.
+The backend runs on a home server; the apps talk to it over the LAN.
+
+## Installing the apps
+
+Download them from [Releases](https://github.com/wiormiw/old-country/releases):
+
+| System | File | Notes |
+|---|---|---|
+| Debian, Ubuntu | `old-country_<version>_amd64.deb` | `sudo apt install ./old-country_*.deb` |
+| Fedora, openSUSE | `old-country-<version>-1.x86_64.rpm` | `sudo dnf install ./old-country-*.rpm` |
+| Any Linux | `old-country_<version>_amd64.AppImage` | `chmod +x` it and run it |
+| Windows | `old-country_<version>_x64-setup.exe` or `.msi` | SmartScreen may warn because the app isn't code-signed: **More info → Run anyway** |
+| macOS | `old-country_<version>_aarch64.dmg` (Apple Silicon) or `_x64.dmg` (Intel) | Not notarized: the first time, right-click the app and choose **Open** |
+| Android 8+ | `old-country_<version>_android.apk` | Allow installing from your browser or file manager when asked; later versions install over it |
+
+On first start, open **Settings** and enter the server address as that device reaches it (e.g.
+`http://192.168.1.10:5000` on the same Wi-Fi).
 
 ## Screenshots
 
@@ -140,7 +158,7 @@ cargo install tauri-cli --version '^2' --locked
 ```bash
 cd desktop
 cargo tauri dev      # Trunk serves the UI on :1420, Tauri opens the window
-cargo tauri build    # .deb and AppImage under target/release/bundle/
+cargo tauri build    # .deb, .rpm and AppImage under target/release/bundle/
 ```
 
 **Install for everyday use** (release build, launcher entry and icon, for the current user):
@@ -186,12 +204,75 @@ desktop/
 and WAV files (needs ffmpeg), and covers the progressive reader, the queue, the API client against a
 stub server, and the shared types. `cargo clippy --workspace --all-targets -- -D warnings` is clean.
 
+## Running the Android app
+
+A Kotlin app with a Jetpack Compose UI. Playback runs in a Media3 `MediaSessionService`, so it
+keeps going with the screen off and shows up in the notification shade, on the lock screen, and on
+Bluetooth controls.
+
+**Prerequisites**: JDK 21 and the Android SDK (Android Studio brings both; or the command-line
+tools, with `sdk.dir` in `android/local.properties`).
+
+```bash
+cd android
+./gradlew :app:assembleDebug        # app/build/outputs/apk/debug/, installs beside a release build
+./gradlew :app:testDebugUnitTest    # JSON parsing, the API client against a stub server, labels
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+In the emulator the computer running the server is `10.0.2.2`, so the address is `http://10.0.2.2:5000`.
+
+**How it fits together**
+
+```
+android/app/src/main/java/dev/wiormiw/oldcountry/
+  data/       the server's JSON (kotlinx.serialization), the API client (OkHttp), settings (DataStore)
+  playback/   PlaybackService (ExoPlayer + MediaSession), the audio cache, the screens' PlayerConnection
+  ui/         Compose screens: Library, Playlists, YouTube, Downloads, Settings, and the player
+```
+
+- **Same server, same rules**: songs only on YouTube stream through the server's YouTube endpoint,
+  downloaded ones from the library; wording and error labels match the desktop app.
+- **Songs kept on the phone**: Media3's cache, keyed by song rather than URL, so changing the server
+  address keeps it. Least recently played go first once it's full (2 GB by default, set in Settings).
+  The next song is fetched while the current one plays.
+- **Skips what can't play**: up to 3 unplayable songs in a row are skipped, like the desktop.
+- **Plain HTTP is allowed** (`network_security_config.xml`), since the server is usually
+  `http://` on the home network.
+
+## Making a release
+
+Set the version in `desktop/Cargo.toml` (the Android app takes it from there too), commit, then tag:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+The [Release workflow](.github/workflows/release.yml) builds the desktop app on Linux, Windows and
+macOS (Apple Silicon and Intel) and the signed Android APK, and attaches them all to a **draft**
+release. Check it over on GitHub and press **Publish**. It can also be started from the Actions tab.
+
+The APK is signed with a release key kept out of the repository. CI reads it from four repository
+secrets (**Settings → Secrets and variables → Actions**):
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 release.jks` |
+| `ANDROID_KEYSTORE_PASSWORD` | the keystore password |
+| `ANDROID_KEY_ALIAS` | the key alias |
+| `ANDROID_KEY_PASSWORD` | the key password |
+
+Local release builds read the same values from `android/keystore.properties` (git-ignored:
+`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Keep a backup of the keystore: Android
+only installs an update signed with the same key.
+
 ## Logs
 
 | App | Where |
 |---|---|
 | API | The Aspire dashboard (`http://localhost:15888`): **Console** for raw output, **Structured** for searchable log events, **Traces** for each request with its SQL and yt-dlp calls. |
 | Desktop | `~/.local/share/dev.wiormiw.oldcountry/logs/old-country.log` (3 × 5 MB, rotated), plus the terminal under `cargo tauri dev`. **Settings → Logs** shows the folder and opens it. |
+| Android | `adb logcat -s PlaybackService` for playback; the rest of the app reports errors on screen. |
 
 ```bash
 tail -f ~/.local/share/dev.wiormiw.oldcountry/logs/old-country.log
