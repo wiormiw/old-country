@@ -76,7 +76,10 @@ fn Results(list: Vec<YouTubeResult>) -> impl IntoView {
                 let download = RwSignal::new(Download::Idle);
                 view! {
                     <li class="result">
-                        {result.thumbnail_url.clone().map(|src| view! { <img class="thumb" src=src alt="" loading="lazy" /> })}
+                        {match result.thumbnail_url.clone() {
+                            Some(src) => view! { <img class="thumb" src=src alt="" loading="lazy" /> }.into_any(),
+                            None => view! { <span class="thumb thumb-empty" aria-hidden="true">"♪"</span> }.into_any(),
+                        }}
                         <div class="result-text">
                             <span class="card-title">{result.title.clone()}</span>
                             <span class="muted">

@@ -71,6 +71,14 @@ pub struct QueueItem {
     pub artist: String,
     /// Seconds, when known before playing.
     pub duration: Option<f64>,
+    /// The YouTube video the song came from, for its thumbnail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_id: Option<String>,
+}
+
+/// A YouTube video's thumbnail. The 4:3 picture letterboxes 16:9 videos; crop it to show them.
+pub fn thumbnail_url(video_id: &str) -> String {
+    format!("https://i.ytimg.com/vi/{video_id}/hqdefault.jpg")
 }
 
 /// Everything the UI needs to draw the player. The core is the only source of truth.
@@ -101,6 +109,35 @@ impl PlayerState {
     }
 }
 
+/// The colour theme: the system's choice, or always light or dark.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Theme {
+    /// The value of the page's `data-theme` attribute (none follows the system).
+    pub fn attribute(self) -> Option<&'static str> {
+        match self {
+            Theme::System => None,
+            Theme::Light => Some("light"),
+            Theme::Dark => Some("dark"),
+        }
+    }
+
+    pub fn from_attribute(value: &str) -> Self {
+        match value {
+            "light" => Theme::Light,
+            "dark" => Theme::Dark,
+            _ => Theme::System,
+        }
+    }
+}
+
 /// Settings the user controls, persisted by the core.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,11 +151,20 @@ pub struct Settings {
     pub shuffle: bool,
     #[serde(default)]
     pub repeat: RepeatMode,
+    #[serde(default)]
+    pub theme: Theme,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { server_url: String::new(), cache_max_megabytes: 2_048, volume: 0.8, shuffle: false, repeat: RepeatMode::Off }
+        Self {
+            server_url: String::new(),
+            cache_max_megabytes: 2_048,
+            volume: 0.8,
+            shuffle: false,
+            repeat: RepeatMode::Off,
+            theme: Theme::System,
+        }
     }
 }
 

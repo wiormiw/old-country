@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use shared::{AppError, DownloadState, Downloads as DownloadList};
 
-use crate::components::{ErrorView, Loading};
+use crate::components::{Art, ErrorView, Loading};
 use crate::ipc;
 use crate::state::error_code_label;
 
@@ -74,10 +74,13 @@ pub fn Downloads() -> impl IntoView {
                                 view! {
                                     <tr>
                                         <td class="col-title">
-                                            {match job.title.clone() {
-                                                Some(title) => view! { <span>{title}</span> }.into_any(),
-                                                None => view! { <code>{job.video_id.clone()}</code> }.into_any(),
-                                            }}
+                                            <div class="title-cell">
+                                                <Art video_id=Some(job.video_id.clone()) />
+                                                {match job.title.clone() {
+                                                    Some(title) => view! { <span>{title}</span> }.into_any(),
+                                                    None => view! { <code>{job.video_id.clone()}</code> }.into_any(),
+                                                }}
+                                            </div>
                                         </td>
                                         <td><span class=class>{label}</span></td>
                                         <td class="muted" title=job.error.clone().unwrap_or_default()>{details}</td>

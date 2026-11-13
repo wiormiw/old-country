@@ -5,7 +5,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use shared::{
     AppError, DownloadStatus, Downloads, ImportReport, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, RepeatMode,
-    ScanStatus, Settings, Track, TrackDetail, YouTubeResult,
+    ScanStatus, Settings, Theme, Track, TrackDetail, YouTubeResult,
 };
 use wasm_bindgen::prelude::*;
 
@@ -85,6 +85,10 @@ pub async fn get_settings() -> Result<Settings, AppError> {
 
 pub async fn save_settings(settings: Settings) -> Result<Settings, AppError> {
     call("save_settings", args!(settings: Settings = settings)).await
+}
+
+pub async fn set_theme(theme: Theme) -> Result<(), AppError> {
+    call("set_theme", args!(theme: Theme = theme)).await
 }
 
 pub async fn check_server(url: String) -> Result<(), AppError> {

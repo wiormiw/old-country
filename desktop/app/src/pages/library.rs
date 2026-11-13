@@ -3,7 +3,7 @@ use leptos_router::components::A;
 use shared::timespan::display;
 use shared::{ScanStatus, Track};
 
-use crate::components::{ErrorView, Loading, open_picker};
+use crate::components::{Art, ErrorView, Loading, open_picker};
 use crate::ipc;
 use crate::state::{track_item, use_notice};
 
@@ -97,8 +97,13 @@ fn TrackTable(tracks: Vec<Track>) -> impl IntoView {
                                     on:click=move |_| leptos::task::spawn_local(ipc::play(queue.clone(), i))>"▶"</button>
                             </td>
                             <td class="col-title">
-                                <A href=format!("/tracks/{}", track.id) attr:class="title-link">{track.title.clone()}</A>
-                                <span class="sub-artist">{track.artist.clone()}</span>
+                                <div class="title-cell">
+                                    <Art video_id=track.you_tube_video_id.clone() />
+                                    <div class="title-text">
+                                        <A href=format!("/tracks/{}", track.id) attr:class="title-link">{track.title.clone()}</A>
+                                        <span class="sub-artist">{track.artist.clone()}</span>
+                                    </div>
+                                </div>
                             </td>
                             <td class="muted col-artist">{track.artist.clone()}</td>
                             <td class="col-time">{display(track.duration)}</td>

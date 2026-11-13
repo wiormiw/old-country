@@ -1,7 +1,7 @@
 //! App-wide reactive state, provided through Leptos context.
 
 use leptos::prelude::*;
-use shared::{AudioRef, ImportReport, PlayerState, PlaylistEntry, QueueItem, Track, YouTubeResult};
+use shared::{AudioRef, ImportReport, PlayerState, PlaylistEntry, QueueItem, Theme, Track, YouTubeResult};
 
 use crate::ipc;
 
@@ -27,7 +27,57 @@ impl Notice {
     }
 }
 
+/// The colour theme the user picked. The page's `data-theme` attribute follows it.
+#[derive(Clone, Copy)]
+pub struct ThemeChoice(pub RwSignal<Theme>);
+
+/// Where the theme is cached for `theme.js`, which applies it before the app has loaded.
+const THEME_KEY: &str = "old-country.theme";
+
+impl ThemeChoice {
+    /// Switches theme now and remembers it.
+    pub fn set(&self, theme: Theme) {
+        self.0.set(theme);
+        leptos::task::spawn_local(async move {
+            let _ = ipc::set_theme(theme).await;
+        });
+    }
+}
+
+fn apply_theme(theme: Theme) {
+    if let Some(root) = document().document_element() {
+        let _ = match theme.attribute() {
+            Some(value) => root.set_attribute("data-theme", value),
+            None => root.remove_attribute("data-theme"),
+        };
+    }
+    if let Ok(Some(storage)) = window().local_storage() {
+        let _ = storage.set_item(THEME_KEY, theme.attribute().unwrap_or("system"));
+    }
+}
+
+fn provide_theme() {
+    // theme.js already applied the cached choice; start from it, then take the saved setting.
+    let initial = document()
+        .document_element()
+        .and_then(|root| root.get_attribute("data-theme"))
+        .map_or(Theme::System, |value| Theme::from_attribute(&value));
+    let theme = RwSignal::new(initial);
+    Effect::new(move |_| apply_theme(theme.get()));
+    leptos::task::spawn_local(async move {
+        if let Ok(settings) = ipc::get_settings().await {
+            theme.set(settings.theme);
+        }
+    });
+    provide_context(ThemeChoice(theme));
+}
+
+pub fn use_theme() -> ThemeChoice {
+    expect_context::<ThemeChoice>()
+}
+
 pub fn provide_app_state() {
+    provide_theme();
     let player = RwSignal::new(PlayerState::default());
     provide_context(Player(player));
     provide_context(Notice(RwSignal::new(None)));
@@ -63,7 +113,13 @@ pub fn track_item(track: &Track) -> QueueItem {
         (Some(video_id), false) => AudioRef::YouTube { video_id: video_id.clone() },
         _ => AudioRef::Track { id: track.id.clone() },
     };
-    QueueItem { audio, title: track.title.clone(), artist: track.artist.clone(), duration: Some(track.duration) }
+    QueueItem {
+        audio,
+        title: track.title.clone(),
+        artist: track.artist.clone(),
+        duration: Some(track.duration),
+        video_id: track.you_tube_video_id.clone(),
+    }
 }
 
 pub fn entry_item(entry: &PlaylistEntry) -> QueueItem {
@@ -71,7 +127,13 @@ pub fn entry_item(entry: &PlaylistEntry) -> QueueItem {
         (Some(video_id), false) => AudioRef::YouTube { video_id: video_id.clone() },
         _ => AudioRef::Track { id: entry.track_id.clone() },
     };
-    QueueItem { audio, title: entry.title.clone(), artist: entry.artist.clone(), duration: Some(entry.duration) }
+    QueueItem {
+        audio,
+        title: entry.title.clone(),
+        artist: entry.artist.clone(),
+        duration: Some(entry.duration),
+        video_id: entry.you_tube_video_id.clone(),
+    }
 }
 
 /// A search result plays the library's local copy when there is one, else streams from YouTube.
@@ -85,6 +147,7 @@ pub fn youtube_item(result: &YouTubeResult) -> QueueItem {
         title: result.title.clone(),
         artist: result.artist.clone().unwrap_or_else(|| "YouTube".into()),
         duration: result.duration,
+        video_id: Some(result.video_id.clone()),
     }
 }
 

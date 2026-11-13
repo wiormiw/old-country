@@ -30,7 +30,8 @@ fn App() -> impl IntoView {
                 <ScrollToTopOnNavigate content />
                 <main class="content" node_ref=content>
                     <Routes fallback=|| view! { <p class="muted">"Page not found."</p> }>
-                        <Route path=path!("/") view=pages::library::Library />
+                        <Route path=path!("/") view=pages::home::Home />
+                        <Route path=path!("/library") view=pages::library::Library />
                         <Route path=path!("/tracks/:id") view=pages::track::TrackPage />
                         <Route path=path!("/playlists") view=pages::playlists::Playlists />
                         <Route path=path!("/playlists/:id") view=pages::playlists::PlaylistDetail />

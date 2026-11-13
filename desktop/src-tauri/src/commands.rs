@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use shared::{
     AppError, DownloadStatus, Downloads, ImportReport, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, RepeatMode,
-    ScanStatus, Settings, Track, TrackDetail, YouTubeResult,
+    ScanStatus, Settings, Theme, Track, TrackDetail, YouTubeResult,
 };
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -244,6 +244,14 @@ pub fn player_set_volume(app: AppHandle, state: State<'_, AppState>, volume: f32
         settings::save(&app, &settings)?;
     }
     Ok(())
+}
+
+/// The colour theme; saved on its own, without checking the server like Save does.
+#[tauri::command]
+pub fn set_theme(app: AppHandle, state: State<'_, AppState>, theme: Theme) -> Reply<()> {
+    let mut settings = state.settings.lock().expect("settings lock");
+    settings.theme = theme;
+    settings::save(&app, &settings)
 }
 
 /// Shuffle on or off; remembered for the next session.

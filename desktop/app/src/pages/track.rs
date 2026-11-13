@@ -4,7 +4,7 @@ use leptos_router::hooks::use_params_map;
 use shared::TrackDetail;
 use shared::timespan::display;
 
-use crate::components::{ErrorView, Loading, open_picker};
+use crate::components::{Art, ErrorView, Loading, open_picker};
 use crate::ipc;
 use crate::state::{problem_label, track_item, use_notice};
 
@@ -88,7 +88,8 @@ fn TrackView(detail: TrackDetail) -> impl IntoView {
 
     view! {
         <header class="page-head">
-            <div>
+            <Art video_id=track.you_tube_video_id.clone() large=true />
+            <div class="page-head-text">
                 <p class="eyebrow">"Song"</p>
                 <h1>{track.title.clone()}</h1>
                 <p class="muted">{format!("{} · {}", track.artist, display(track.duration))}</p>

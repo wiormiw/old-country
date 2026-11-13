@@ -6,7 +6,7 @@ use leptos_router::hooks::{use_navigate, use_params_map};
 use shared::timespan::display;
 use shared::{AppError, Playlist, PlaylistDownloadReport, PlaylistEntry};
 
-use crate::components::{ErrorView, Loading};
+use crate::components::{Art, ErrorView, Loading};
 use crate::ipc;
 use crate::state::{entry_item, import_message, is_lasting_problem, problem_label, time_ago, use_notice};
 
@@ -371,11 +371,16 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
                                             on:click=move |_| leptos::task::spawn_local(ipc::play(queue(), i))>"▶"</button>
                                     </td>
                                     <td class="col-title">
-                                        <A href=format!("/tracks/{}", entry.track_id) attr:class="title-link">{entry.title.clone()}</A>
-                                        {problem.map(|p| view! {
-                                            <span class="badge badge-error problem" title="YouTube refused the last download">{problem_label(&p)}</span>
-                                        })}
-                                        <span class="sub-artist">{entry.artist.clone()}</span>
+                                        <div class="title-cell">
+                                            <Art video_id=entry.you_tube_video_id.clone() />
+                                            <div class="title-text">
+                                                <A href=format!("/tracks/{}", entry.track_id) attr:class="title-link">{entry.title.clone()}</A>
+                                                {problem.map(|p| view! {
+                                                    <span class="badge badge-error problem" title="YouTube refused the last download">{problem_label(&p)}</span>
+                                                })}
+                                                <span class="sub-artist">{entry.artist.clone()}</span>
+                                            </div>
+                                        </div>
                                     </td>
                                     <td class="muted col-artist">{entry.artist.clone()}</td>
                                     <td class="col-time">{display(entry.duration)}</td>

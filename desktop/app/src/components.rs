@@ -2,11 +2,50 @@
 
 use leptos::prelude::*;
 use leptos_router::components::A;
-use shared::{AppError, RepeatMode};
+use shared::{AppError, RepeatMode, Theme};
 use shared::timespan::display;
 
 use crate::ipc;
-use crate::state::{use_notice, use_player};
+use crate::state::{use_notice, use_player, use_theme};
+
+/// A song's YouTube thumbnail, or a note when it has none or the picture doesn't load.
+#[component]
+pub fn Art(video_id: Option<String>, #[prop(optional)] large: bool) -> impl IntoView {
+    let failed = RwSignal::new(false);
+    view! {
+        <span class="art" class:art-large=large aria-hidden="true">
+            <span class="art-note">"♪"</span>
+            {video_id.map(|id| view! {
+                <img src=shared::thumbnail_url(&id) alt="" loading="lazy" decoding="async"
+                    class:failed=move || failed.get() on:error=move |_| failed.set(true) />
+            })}
+        </span>
+    }
+}
+
+/// System / Light / Dark. On Home and in Settings; the choice is saved and applies at once.
+#[component]
+pub fn ThemeToggle() -> impl IntoView {
+    let theme = use_theme();
+    let option = move |value: Theme, icon: &'static str, label: &'static str| {
+        view! {
+            <button type="button" role="radio" title=label aria-label=label
+                aria-checked=move || (theme.0.get() == value).to_string()
+                class:active=move || theme.0.get() == value
+                on:click=move |_| theme.set(value)>
+                <span aria-hidden="true">{icon}</span>
+                <span class="theme-label">{label}</span>
+            </button>
+        }
+    };
+    view! {
+        <div class="theme-toggle" role="radiogroup" aria-label="Theme">
+            {option(Theme::System, "◐", "System")}
+            {option(Theme::Light, "☀", "Light")}
+            {option(Theme::Dark, "☾", "Dark")}
+        </div>
+    }
+}
 
 #[component]
 pub fn Sidebar() -> impl IntoView {
@@ -16,7 +55,8 @@ pub fn Sidebar() -> impl IntoView {
                 <span class="brand-mark" aria-hidden="true"></span>
                 <span>"old-country"</span>
             </div>
-            <A href="/">"Library"</A>
+            <A href="/" exact=true>"Home"</A>
+            <A href="/library">"Library"</A>
             <A href="/playlists">"Playlists"</A>
             <A href="/youtube">"YouTube Music"</A>
             <A href="/downloads">"Downloads"</A>
@@ -162,8 +202,11 @@ pub fn NowPlaying() -> impl IntoView {
                 {move || match current.get() {
                     Some(item) => view! {
                         <div class="np-now">
-                            <div class="np-title">{item.title}</div>
-                            <div class="np-artist">{item.artist}</div>
+                            <Art video_id=item.video_id />
+                            <div class="np-text">
+                                <div class="np-title">{item.title}</div>
+                                <div class="np-artist">{item.artist}</div>
+                            </div>
                         </div>
                     }.into_any(),
                     None => view! { <div class="np-title muted">"Nothing playing"</div> }.into_any(),
@@ -294,8 +337,11 @@ fn QueueDrawer(closing: RwSignal<bool>, on_close: impl Fn() + 'static + Copy) ->
                             view! {
                                 <li class:current=current class:heard=heard>
                                     <button class="queue-item" on:click=move |_| leptos::task::spawn_local(ipc::jump(i))>
-                                        <span class="q-title">{item.title}</span>
-                                        <span class="q-artist">{item.artist}</span>
+                                        <Art video_id=item.video_id />
+                                        <span class="q-text">
+                                            <span class="q-title">{item.title}</span>
+                                            <span class="q-artist">{item.artist}</span>
+                                        </span>
                                     </button>
                                     <button class="icon" aria-label="Remove from queue"
                                         on:click=move |_| leptos::task::spawn_local(ipc::remove_from_queue(i))>"✕"</button>

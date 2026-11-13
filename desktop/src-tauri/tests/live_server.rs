@@ -75,6 +75,7 @@ fn plays_every_library_track_seeks_skips_and_streams_youtube() {
             title: t.title.clone(),
             artist: t.artist.clone(),
             duration: Some(t.duration),
+            video_id: t.you_tube_video_id.clone(),
         })
         .collect();
     let codecs: Vec<String> =
@@ -142,6 +143,7 @@ fn plays_every_library_track_seeks_skips_and_streams_youtube() {
                     title: video.title.clone(),
                     artist: video.artist.clone().unwrap_or_default(),
                     duration: video.duration,
+                    video_id: Some(video.video_id.clone()),
                 }],
                 start: 0,
             });

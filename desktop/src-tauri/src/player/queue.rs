@@ -249,6 +249,7 @@ mod tests {
             title: format!("Song {n}"),
             artist: "Band".into(),
             duration: Some(180.0),
+            video_id: None,
         }
     }
 

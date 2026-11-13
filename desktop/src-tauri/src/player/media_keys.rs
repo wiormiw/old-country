@@ -88,10 +88,12 @@ impl MediaKeys {
         let mut shown = self.shown.lock().expect("media shown lock");
         let new_item = shown.item != current;
         if new_item {
+            let cover = current.as_ref().and_then(|item| item.video_id.as_deref()).map(shared::thumbnail_url);
             let metadata = match &current {
                 Some(item) => MediaMetadata {
                     title: Some(&item.title),
                     artist: Some(&item.artist),
+                    cover_url: cover.as_deref(),
                     duration: state.duration.or(item.duration).map(Duration::from_secs_f64),
                     ..Default::default()
                 },

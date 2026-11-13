@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use shared::{AppError, Settings};
 
+use crate::components::ThemeToggle;
 use crate::ipc;
 use crate::state::use_notice;
 
@@ -90,6 +91,12 @@ pub fn SettingsPage() -> impl IntoView {
                         prop:disabled=move || checking.get()>"Test connection"</button>
                 </div>
             </form>
+
+            <section class="panel">
+                <h2>"Appearance"</h2>
+                <p class="muted">"Follow the system, or always use the light or the dark theme. It applies at once."</p>
+                <ThemeToggle />
+            </section>
 
             <section class="panel">
                 <h2>"Logs"</h2>

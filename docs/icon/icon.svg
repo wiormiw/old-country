@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- old-country's icon: a record in the app's two themes. The label is split like the
+       legendary pair the palette comes from: ember (light theme) and storm blue (dark theme). -->
+  <defs>
+    <radialGradient id="tile" cx="35%" cy="25%" r="90%">
+      <stop offset="0" stop-color="#3a3530"/>
+      <stop offset="1" stop-color="#1d1a17"/>
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0.25" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.07"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="200" fill="url(#tile)"/>
+  <circle cx="512" cy="512" r="370" fill="#121315"/>
+  <g fill="none" stroke="#2e3136" stroke-width="4">
+    <circle cx="512" cy="512" r="330"/>
+    <circle cx="512" cy="512" r="295"/>
+    <circle cx="512" cy="512" r="260"/>
+    <circle cx="512" cy="512" r="225"/>
+    <circle cx="512" cy="512" r="190"/>
+  </g>
+  <circle cx="512" cy="512" r="370" fill="url(#sheen)"/>
+  <circle cx="512" cy="512" r="150" fill="#5aaad3"/>
+  <path d="M512,362 A150,150 0 0,0 512,662 A75,75 0 0,0 512,512 A75,75 0 0,1 512,362 Z" fill="#c4521f"/>
+  <circle cx="512" cy="512" r="26" fill="#efe9df"/>
+</svg>
