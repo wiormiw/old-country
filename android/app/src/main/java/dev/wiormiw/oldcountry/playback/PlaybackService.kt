@@ -129,11 +129,9 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // Swiped away from recents: keep playing if it is, else go.
-        val player = session?.player
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
-            stopSelf()
-        }
+        // Closed from Recents (its preview swiped away): the music stops and the notification goes,
+        // like closing the desktop window. Leaving the app any other way keeps it playing.
+        pauseAllPlayersAndStopSelf()
     }
 
     override fun onDestroy() {
