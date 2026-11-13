@@ -75,7 +75,7 @@ fun HomeScreen() {
         env.api.playlists().sortedByDescending { it.updatedAt ?: it.createdAt }.take(RECENT_PLAYLISTS)
     }
 
-    Screen("old-country", actions = {
+    Screen("old-country", logo = true, actions = {
         IconButton(onClick = { env.nav.navigate(Route.Settings) }) { Icon(Icons.Filled.Settings, "Settings") }
     }) { modifier ->
         LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {

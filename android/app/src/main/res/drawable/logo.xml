@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app's logo, the same record as its icon (docs/icon/icon.svg): the label split ember and
+     storm blue, the light and dark themes. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <path android:fillColor="#121315" android:pathData="M50,2A48,48 0,1 1,50 98A48,48 0,1 1,50 2Z" />
+    <path android:strokeColor="#2E3136" android:strokeWidth="1.5" android:pathData="M50,12A38,38 0,1 1,50 88A38,38 0,1 1,50 12Z" />
+    <path android:strokeColor="#2E3136" android:strokeWidth="1.5" android:pathData="M50,20A30,30 0,1 1,50 80A30,30 0,1 1,50 20Z" />
+    <path android:fillColor="#5AAAD3" android:pathData="M50,31A19,19 0,1 1,50 69A19,19 0,1 1,50 31Z" />
+    <path android:fillColor="#C4521F" android:pathData="M50,31A19,19 0,0 0,50 69A9.5,9.5 0,0 0,50 50A9.5,9.5 0,0 1,50 31Z" />
+    <path android:fillColor="#EFE9DF" android:pathData="M50,46.5A3.5,3.5 0,1 1,50 53.5A3.5,3.5 0,1 1,50 46.5Z" />
+</vector>

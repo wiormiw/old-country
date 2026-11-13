@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -128,6 +129,8 @@ fun AppScaffold(player: PlayerConnection) {
 fun Screen(
     title: String,
     back: Boolean = false,
+    /** Show the app's logo before the title (Home). */
+    logo: Boolean = false,
     actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
     floating: @Composable () -> Unit = {},
     content: @Composable (Modifier) -> Unit,
@@ -137,7 +140,18 @@ fun Screen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = {
+                    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        if (logo) {
+                            androidx.compose.foundation.Image(
+                                androidx.compose.ui.res.painterResource(dev.wiormiw.oldcountry.R.drawable.logo),
+                                contentDescription = null,
+                                modifier = Modifier.padding(end = 10.dp),
+                            )
+                        }
+                        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                },
                 navigationIcon = {
                     if (back) {
                         androidx.compose.material3.IconButton(onClick = { env.nav.popBackStack() }) {

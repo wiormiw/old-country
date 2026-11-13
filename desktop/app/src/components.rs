@@ -47,12 +47,28 @@ pub fn ThemeToggle() -> impl IntoView {
     }
 }
 
+/// The app's logo, the same record as its icon (docs/icon/icon.svg): the label split ember and
+/// storm blue, the light and dark themes.
+#[component]
+pub fn Logo() -> impl IntoView {
+    view! {
+        <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true">
+            <circle cx="50" cy="50" r="48" fill="#121315" />
+            <circle cx="50" cy="50" r="38" fill="none" stroke="#2e3136" stroke-width="1.5" />
+            <circle cx="50" cy="50" r="30" fill="none" stroke="#2e3136" stroke-width="1.5" />
+            <circle cx="50" cy="50" r="19" fill="#5aaad3" />
+            <path d="M50,31 A19,19 0 0,0 50,69 A9.5,9.5 0 0,0 50,50 A9.5,9.5 0 0,1 50,31 Z" fill="#c4521f" />
+            <circle cx="50" cy="50" r="3.5" fill="#efe9df" />
+        </svg>
+    }
+}
+
 #[component]
 pub fn Sidebar() -> impl IntoView {
     view! {
         <nav class="sidebar">
             <div class="brand">
-                <span class="brand-mark" aria-hidden="true"></span>
+                <Logo />
                 <span>"old-country"</span>
             </div>
             <A href="/" exact=true>"Home"</A>
