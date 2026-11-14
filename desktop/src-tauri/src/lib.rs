@@ -5,6 +5,7 @@ pub mod api;
 pub mod commands;
 pub mod live;
 pub mod player;
+pub mod presence;
 pub mod settings;
 
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -19,6 +20,7 @@ use crate::commands::AppState;
 use crate::player::{PlayerHandle, StartSettings};
 use crate::player::cache::AudioCache;
 use crate::player::media_keys::MediaKeys;
+use crate::presence::{DISCORD_APPLICATION_ID, Presence};
 
 /// The main window's native handle, which the Windows media controls attach to.
 #[cfg(target_os = "windows")]
@@ -106,16 +108,21 @@ pub fn run() {
             let cache = Arc::new(AudioCache::new(cache_dir, http.clone(), runtime)?);
             cache.trim(settings.cache_max_megabytes * 1024 * 1024);
 
-            // Every state change goes to the UI and to the desktop's media controls. The media
-            // controls need the player handle to send commands, so they're attached right after.
+            // Every state change goes to the UI, to the desktop's media controls, and to Discord. The
+            // media controls need the player handle to send commands, so they're attached right after.
             let events = app.handle().clone();
             let media_keys: Arc<OnceLock<MediaKeys>> = Arc::new(OnceLock::new());
             let mirror = Arc::clone(&media_keys);
+            let presence = Presence::start(DISCORD_APPLICATION_ID, settings.discord_presence);
+            let discord = presence.clone();
             let start = StartSettings { volume: settings.volume, shuffle: settings.shuffle, repeat: settings.repeat };
             let player = PlayerHandle::spawn(Arc::clone(&cache), Arc::clone(&server), start, move |state| {
                 let _ = events.emit(PLAYER_STATE_EVENT, state);
                 if let Some(keys) = mirror.get() {
                     keys.update(state);
+                }
+                if let Some(discord) = &discord {
+                    discord.update(state);
                 }
             });
             if let Some(keys) = MediaKeys::start(player.clone(), window_handle(app)) {
@@ -137,6 +144,7 @@ pub fn run() {
                 settings: Mutex::new(settings),
                 cache,
                 live,
+                presence,
             });
             Ok(())
         })
@@ -145,6 +153,8 @@ pub fn run() {
             commands::save_settings,
             commands::live_status,
             commands::set_theme,
+            commands::set_discord_presence,
+            commands::discord_presence_available,
             commands::check_server,
             commands::list_tracks,
             commands::get_track,

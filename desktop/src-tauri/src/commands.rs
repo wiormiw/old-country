@@ -11,6 +11,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::api::ApiClient;
+use crate::presence::Presence;
 use crate::player::cache::AudioCache;
 use crate::player::{Command, PlayerHandle, ServerUrl};
 use crate::settings;
@@ -25,6 +26,8 @@ pub struct AppState {
     pub cache: Arc<AudioCache>,
     /// The live connection's latest status (also pushed as an event when it changes).
     pub live: Arc<Mutex<LiveStatus>>,
+    /// The Discord card. `None` when the Discord application id is not set.
+    pub presence: Option<Presence>,
 }
 
 type Reply<T> = Result<T, AppError>;
@@ -55,6 +58,9 @@ pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings:
     *state.server.write().expect("server url lock") = settings.server_url.clone();
     *state.settings.lock().expect("settings lock") = settings.clone();
     state.cache.trim(settings.cache_max_megabytes * MEGABYTE);
+    if let Some(presence) = &state.presence {
+        presence.set_enabled(settings.discord_presence);
+    }
     Ok(settings)
 }
 
@@ -198,8 +204,8 @@ pub fn player_state(state: State<'_, AppState>) -> PlayerState {
 }
 
 #[tauri::command]
-pub fn player_play(state: State<'_, AppState>, items: Vec<QueueItem>, start: usize) {
-    state.player.send(Command::Play { items, start });
+pub fn player_play(state: State<'_, AppState>, items: Vec<QueueItem>, start: usize, context: Option<String>) {
+    state.player.send(Command::Play { items, start, context });
 }
 
 #[tauri::command]
@@ -260,6 +266,23 @@ pub fn set_theme(app: AppHandle, state: State<'_, AppState>, theme: Theme) -> Re
     let mut settings = state.settings.lock().expect("settings lock");
     settings.theme = theme;
     settings::save(&app, &settings)
+}
+
+/// Show the current track on Discord, or not. Saved on its own, like the theme. Off removes the card at once.
+#[tauri::command]
+pub fn set_discord_presence(app: AppHandle, state: State<'_, AppState>, on: bool) -> Reply<()> {
+    if let Some(presence) = &state.presence {
+        presence.set_enabled(on);
+    }
+    let mut settings = state.settings.lock().expect("settings lock");
+    settings.discord_presence = on;
+    settings::save(&app, &settings)
+}
+
+/// Whether this build can show a Discord card (its Discord application id is set).
+#[tauri::command]
+pub fn discord_presence_available(state: State<'_, AppState>) -> bool {
+    state.presence.is_some()
 }
 
 /// Shuffle on or off; remembered for the next session.

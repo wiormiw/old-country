@@ -87,6 +87,16 @@ pub async fn save_settings(settings: Settings) -> Result<Settings, AppError> {
     call("save_settings", args!(settings: Settings = settings)).await
 }
 
+/// Show the current track on Discord, or not. It applies at once.
+pub async fn set_discord_presence(on: bool) -> Result<(), AppError> {
+    call("set_discord_presence", args!(on: bool = on)).await
+}
+
+/// Whether this build has a Discord application id, so it can show a card.
+pub async fn discord_presence_available() -> bool {
+    call("discord_presence_available", NoArgs {}).await.unwrap_or(false)
+}
+
 pub async fn set_theme(theme: Theme) -> Result<(), AppError> {
     call("set_theme", args!(theme: Theme = theme)).await
 }
@@ -187,8 +197,9 @@ pub async fn player_state() -> Result<PlayerState, AppError> {
     call("player_state", NoArgs {}).await
 }
 
-pub async fn play(items: Vec<QueueItem>, start: usize) {
-    fire("player_play", args!(items: Vec<QueueItem> = items, start: usize = start)).await;
+/// `context`: the playlist name when the queue is a playlist (Discord shows it), else `None`.
+pub async fn play(items: Vec<QueueItem>, start: usize, context: Option<String>) {
+    fire("player_play", args!(items: Vec<QueueItem> = items, start: usize = start, context: Option<String> = context)).await;
 }
 
 pub async fn enqueue(items: Vec<QueueItem>) {

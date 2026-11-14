@@ -9,7 +9,7 @@ A personal music player: your offline library plus YouTube Music, in one place.
 - **Downloads**: one song or a whole playlist ("Download all"), queued in the database so they survive restarts, paced so YouTube doesn't block you, and songs YouTube refuses are remembered to retry later.
 - **Live updates**: change something on one device (or let the YouTube sync or a download do it) and every open app shows it within a second, over SignalR.
 - **Home and themes**: a welcome page with what's playing, the server's status and recent playlists; a light and a dark theme (or the system's), with song thumbnails everywhere.
-- **Desktop app** (Linux, Windows, macOS): native playback with media keys, shuffle and repeat, an offline audio cache, a layout that fits a narrow window, and one window only (starting it again brings the open one forward).
+- **Desktop app** (Linux, Windows, macOS): native playback with media keys, shuffle and repeat, an offline audio cache, a "Listening to old-country" card on your Discord profile, a layout that fits a narrow window, and one window only (starting it again brings the open one forward).
 - **Android app**: the same features, with background playback, lock-screen and notification controls, and songs kept on the phone for offline replays.
 
 | Part | Stack | Status |
@@ -247,6 +247,20 @@ desktop/
   and work while the window is hidden.
 - **Themes**: System, Light or Dark, saved with the settings and cached for `app/theme.js`, which
   applies it before the app loads so it never flashes the other one.
+- **Discord Rich Presence** (`src-tauri/src/presence.rs`): while music plays, your Discord profile
+  shows "Listening to old-country" like Spotify does: the track (linked to YouTube Music for
+  YouTube tracks), the artist, a progress bar, "Playlist: <name>" (or "Library"), and a
+  "Play on YouTube Music" button. Pausing removes it. It talks to the Discord app on the same
+  computer over its local socket, so no server is involved; that's also why the cover must be
+  public: YouTube tracks show their thumbnail, local files the `logo` asset. It connects only
+  while something plays, retries every 15 s when Discord isn't running, and updates Discord only
+  on real changes (Discord allows about 5 updates in 20 s). Settings has a switch for it.
+  - **Setup** (once): create an application named "old-country" in the
+    [Discord Developer Portal](https://discord.com/developers/applications), upload the app icon
+    (`docs/icon/icon.svg`, exported at 1024×1024) under Rich Presence → Art Assets with the key
+    `logo`, and put its Application ID in `DISCORD_APPLICATION_ID` (`src-tauri/src/presence.rs`).
+    The ID is public. Empty turns the feature off.
+  - **Android** can't do this: Discord offers no supported way for a phone app to set presence.
 
 **Looking at the UI without a server** (e.g. for screenshots): `trunk serve` in `desktop/app`, then
 open `http://localhost:1420` in a browser with `app/dev/mock-tauri.js` loaded first (Playwright's

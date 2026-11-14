@@ -93,10 +93,10 @@ fn TrackTable(tracks: Vec<Track>) -> impl IntoView {
                     };
                     let row_queue = queue.clone();
                     view! {
-                        <tr on:dblclick=move |_| leptos::task::spawn_local(ipc::play(row_queue.clone(), i))>
+                        <tr on:dblclick=move |_| leptos::task::spawn_local(ipc::play(row_queue.clone(), i, None))>
                             <td class="col-num">
                                 <button class="icon row-play" aria-label="Play"
-                                    on:click=move |_| leptos::task::spawn_local(ipc::play(queue.clone(), i))>"▶"</button>
+                                    on:click=move |_| leptos::task::spawn_local(ipc::play(queue.clone(), i, None))>"▶"</button>
                             </td>
                             <td class="col-title">
                                 <div class="title-cell">

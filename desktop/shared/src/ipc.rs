@@ -175,6 +175,9 @@ pub struct PlayerState {
     pub volume: f32,
     /// Why the current item can't play, if it can't.
     pub error: Option<String>,
+    /// Where the queue came from: the playlist name, or `None` for the library, search or one track.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
 }
 
 impl PlayerState {
@@ -227,6 +230,13 @@ pub struct Settings {
     pub repeat: RepeatMode,
     #[serde(default)]
     pub theme: Theme,
+    /// Show the current track on the Discord profile (Rich Presence).
+    #[serde(default = "on")]
+    pub discord_presence: bool,
+}
+
+fn on() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -238,6 +248,7 @@ impl Default for Settings {
             shuffle: false,
             repeat: RepeatMode::Off,
             theme: Theme::System,
+            discord_presence: true,
         }
     }
 }

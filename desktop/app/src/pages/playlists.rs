@@ -282,6 +282,8 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
     };
 
     let queue = move || entries.with_untracked(|list| list.iter().map(entry_item).collect::<Vec<_>>());
+    // The player gets the playlist name with the queue. Discord shows it.
+    let context = StoredValue::new(playlist.name.clone());
 
     view! {
         <header class="page-head">
@@ -309,7 +311,7 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
             </div>
             <div class="actions">
                 <button class="primary" prop:disabled=move || empty.get()
-                    on:click=move |_| leptos::task::spawn_local(ipc::play(queue(), 0))>"▶ Play all"</button>
+                    on:click=move |_| leptos::task::spawn_local(ipc::play(queue(), 0, Some(context.get_value())))>"▶ Play all"</button>
                 <button class="ghost" aria-busy=move || queueing.get().to_string()
                     prop:disabled=move || { queueing.get() || to_get.get() == 0 }
                     title="Download the songs that aren't on this computer's server yet, one after another"
@@ -378,7 +380,7 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
                                     style:display=move || if matches(&title, &artist) && !(only_missing.get() && offline) { "" } else { "none" }>
                                     <td class="col-num">
                                         <button class="icon row-play" aria-label="Play"
-                                            on:click=move |_| leptos::task::spawn_local(ipc::play(queue(), i))>"▶"</button>
+                                            on:click=move |_| leptos::task::spawn_local(ipc::play(queue(), i, Some(context.get_value())))>"▶"</button>
                                     </td>
                                     <td class="col-title">
                                         <div class="title-cell">

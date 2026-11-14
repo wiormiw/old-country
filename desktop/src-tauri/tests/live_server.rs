@@ -82,7 +82,7 @@ fn plays_every_library_track_seeks_skips_and_streams_youtube() {
         page.items.iter().filter(|t| t.is_available_offline).map(|t| t.codec.clone().unwrap_or_default()).collect();
 
     // 1. Each track: starts playing and its position advances.
-    rig.player.send(Command::Play { items: queue.clone(), start: 0 });
+    rig.player.send(Command::Play { items: queue.clone(), start: 0, context: None });
     for (i, item) in queue.iter().enumerate() {
         if i > 0 {
             rig.player.send(Command::Jump(i));
@@ -146,6 +146,7 @@ fn plays_every_library_track_seeks_skips_and_streams_youtube() {
                     video_id: Some(video.video_id.clone()),
                 }],
                 start: 0,
+                context: None,
             });
             let started = Instant::now();
             let state = wait_for(&rig, "YouTube stream", Duration::from_secs(90), |s| s.playing && s.position >= 1.0);

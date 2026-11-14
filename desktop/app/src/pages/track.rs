@@ -42,7 +42,7 @@ fn TrackView(detail: TrackDetail) -> impl IntoView {
 
     let play = {
         let item = item.clone();
-        move |_| leptos::task::spawn_local(ipc::play(vec![item.clone()], 0))
+        move |_| leptos::task::spawn_local(ipc::play(vec![item.clone()], 0, None))
     };
     let enqueue = {
         let item = item.clone();

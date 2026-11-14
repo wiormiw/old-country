@@ -16,6 +16,21 @@ pub fn SettingsPage() -> impl IntoView {
     // Which button started the check, so only that one shows the spinner.
     let saving = RwSignal::new(false);
 
+    let discord = RwSignal::new(true);
+    let discord_available = RwSignal::new(false);
+    leptos::task::spawn_local(async move {
+        discord_available.set(ipc::discord_presence_available().await);
+    });
+    let toggle_discord = move |ev: leptos::ev::Event| {
+        let on = event_target_checked(&ev);
+        discord.set(on);
+        leptos::task::spawn_local(async move {
+            if let Err(e) = ipc::set_discord_presence(on).await {
+                notice.error(e.message);
+            }
+        });
+    };
+
     let logs = RwSignal::new(String::new());
     leptos::task::spawn_local(async move {
         if let Ok(folder) = ipc::logs_folder().await {
@@ -26,6 +41,7 @@ pub fn SettingsPage() -> impl IntoView {
         if let Ok(settings) = ipc::get_settings().await {
             server.set(settings.server_url.clone());
             cache_mb.set(settings.cache_max_megabytes.to_string());
+            discord.set(settings.discord_presence);
             loaded.set(Some(settings));
         }
     });
@@ -96,6 +112,20 @@ pub fn SettingsPage() -> impl IntoView {
                 <h2>"Appearance"</h2>
                 <p class="muted">"Follow the system, or always use the light or the dark theme. It applies at once."</p>
                 <ThemeToggle />
+            </section>
+
+            <section class="panel">
+                <h2>"Discord"</h2>
+                <label class="check">
+                    <input type="checkbox" prop:checked=move || discord.get() on:change=toggle_discord
+                        prop:disabled=move || !discord_available.get() />
+                    "Show what I'm listening to on Discord"
+                </label>
+                <p class="muted">{move || if discord_available.get() {
+                    "Your Discord profile shows the track, the artist, the playlist and a progress bar while music plays. The Discord app must run on this computer."
+                } else {
+                    "This build has no Discord application id, so it cannot show a card."
+                }}</p>
             </section>
 
             <section class="panel">

@@ -194,6 +194,9 @@ input[type="text"], input[type="search"], input[type="number"] {
 .stack-form label { display: grid; gap: 6px; font-weight: 600; }
 .field-error { color: var(--danger); }
 .error-box { border: 1px solid var(--danger); border-radius: var(--radius); padding: 14px 16px; background: var(--surface); }
+.check { display: flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; margin: 4px 0 8px; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+.check:has(input:disabled) { opacity: 0.6; cursor: default; }
 .panel { margin-top: 32px; padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); max-width: 760px; }
 
 .badge {

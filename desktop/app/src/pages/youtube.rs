@@ -92,7 +92,7 @@ fn Results(list: Vec<YouTubeResult>) -> impl IntoView {
                             </span>
                         </div>
                         <div class="actions">
-                            <button class="primary small" on:click=move |_| leptos::task::spawn_local(ipc::play(queue.clone(), i))>"▶ Play"</button>
+                            <button class="primary small" on:click=move |_| leptos::task::spawn_local(ipc::play(queue.clone(), i, None))>"▶ Play"</button>
                             <button class="ghost small" on:click=move |_| {
                                 let item = item.clone();
                                 leptos::task::spawn_local(async move {

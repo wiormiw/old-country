@@ -30,7 +30,8 @@ const MAX_SKIPS: u32 = 3;
 pub type ServerUrl = Arc<RwLock<String>>;
 
 pub enum Command {
-    Play { items: Vec<QueueItem>, start: usize },
+    /// `context`: the playlist name, when the queue is a playlist.
+    Play { items: Vec<QueueItem>, start: usize, context: Option<String> },
     Enqueue(Vec<QueueItem>),
     Jump(usize),
     Remove(usize),
@@ -94,6 +95,7 @@ impl PlayerHandle {
             duration: None,
             volume,
             error: None,
+            context: None,
             failures: 0,
         };
         thread::Builder::new()
@@ -127,6 +129,8 @@ struct Engine {
     duration: Option<f64>,
     volume: f32,
     error: Option<String>,
+    /// The playlist that the queue came from, if any.
+    context: Option<String>,
     /// Songs that failed to load in a row.
     failures: u32,
 }
@@ -169,8 +173,9 @@ impl Engine {
 
     fn handle(&mut self, command: Command, output: &mut Output) {
         match command {
-            Command::Play { items, start } => {
+            Command::Play { items, start, context } => {
                 self.queue.replace(items, start);
+                self.context = context;
                 self.want_playing = true;
                 self.start(output);
             }
@@ -221,6 +226,7 @@ impl Engine {
             }
             Command::Stop => {
                 self.queue.clear();
+                self.context = None;
                 self.want_playing = false;
                 self.start(output);
             }
@@ -347,6 +353,7 @@ impl Engine {
             duration: self.duration,
             volume: self.volume,
             error: self.error.clone(),
+            context: self.context.clone(),
         }
     }
 }

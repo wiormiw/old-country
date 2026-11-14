@@ -29,6 +29,7 @@
   }));
   const item = (t) => ({ audio: { kind: "track", id: t.id }, title: t.title, artist: t.artist, duration: 213, videoId: t.youTubeVideoId });
   let theme = localStorage.getItem("old-country.theme") ?? "system";
+  let discordPresence = true;
   const player = {
     queue: tracks.slice(0, 4).map(item), index: 1, order: [0, 1, 2, 3], shuffle: false, repeat: "off",
     playing: true, buffering: false, position: 74, duration: 355, volume: 0.7,
@@ -36,8 +37,10 @@
   if (location.hash === "#queue") Object.assign(player, { shuffle: true, repeat: "all", order: [2, 0, 1, 3], index: 0 });
   entries[2] = { ...entries[2], downloadProblem: "PremiumOnly" };
   const answers = {
-    get_settings: () => ({ serverUrl: "http://192.168.1.10:5000", cacheMaxMegabytes: 2048, volume: 0.7, shuffle: false, repeat: "off", theme }),
+    get_settings: () => ({ serverUrl: "http://192.168.1.10:5000", cacheMaxMegabytes: 2048, volume: 0.7, shuffle: false, repeat: "off", theme, discordPresence }),
     set_theme: ({ theme: t }) => { theme = t; return null; },
+    set_discord_presence: ({ on }) => { discordPresence = on; return null; },
+    discord_presence_available: () => true,
     check_server: () => null,
     player_state: () => player,
     list_tracks: () => ({ items: tracks, page: 1, pageSize: 50, totalCount: 1284, totalPages: 26 }),
