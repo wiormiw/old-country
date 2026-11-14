@@ -18,7 +18,7 @@ internal static class ImportPlaylistEndpoint
         .WithDescription("The first import creates a library playlist (201). Importing the same playlist again syncs it (200): "
             + "songs added on YouTube since are appended; the library playlist's name, description, order and removals are kept. "
             + "Videos not yet in the library become YouTube-only tracks; download them later for offline play.")
-        .ProducesProblem(StatusCodes.Status502BadGateway);
+        .ProducesYouTubeProblems();
 
     private static async Task<Results<Created<ImportPlaylistReport>, Ok<ImportPlaylistReport>, ProblemHttpResult>> Handle(
         ImportPlaylistRequest request, ICommandHandler<ImportPlaylistCommand, ImportPlaylistResult> handler, CancellationToken cancellationToken) =>

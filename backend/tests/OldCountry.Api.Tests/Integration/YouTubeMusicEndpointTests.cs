@@ -247,6 +247,18 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task A_video_that_youtube_refuses_is_a_403_with_its_reason_not_a_server_error()
+    {
+        using var client = factory.CreateApiClient();
+
+        var response = await client.GetAsync($"/api/youtube-music/videos/{FakeYtDlp.PremiumOnly.Id.Value}/audio", Ct);
+
+        // A 4xx status: the 5xx metrics and alerts count only the failures of the server.
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("code").GetString().ShouldBe("youtube.premium_only");
+    }
+
+    [Fact]
     public async Task Audio_outside_the_library_folders_is_never_served()
     {
         using var client = factory.CreateApiClient();

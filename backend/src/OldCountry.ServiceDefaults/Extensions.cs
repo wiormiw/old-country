@@ -20,8 +20,8 @@ public static class Extensions
     private const string HealthPath = "/health";
     private const string AlivePath = "/alive";
 
-    /// <summary>The trace sources of the app itself: one span for each use case, from the logging decorator.</summary>
-    private static readonly string[] ApplicationSources = ["OldCountry.Application"];
+    /// <summary>The trace sources of the app itself: one span for each use case (logging decorator) and each yt-dlp run.</summary>
+    private static readonly string[] ApplicationSources = ["OldCountry.Application", "OldCountry.Infrastructure.YtDlp"];
 
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {

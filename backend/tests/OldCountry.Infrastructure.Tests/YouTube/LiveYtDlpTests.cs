@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using OldCountry.Application.Common.Telemetry;
 using OldCountry.Application.Common.YouTube;
 using OldCountry.Domain.Tracks;
 using OldCountry.Domain.YouTube;
@@ -22,7 +23,7 @@ public sealed class LiveYtDlpTests : IDisposable
     private static YtDlpProcess YtDlp()
     {
         Assert.SkipUnless(Environment.GetEnvironmentVariable("OLDCOUNTRY_LIVE_YTDLP") == "1", "Set OLDCOUNTRY_LIVE_YTDLP=1 to run live yt-dlp tests.");
-        return new YtDlpProcess(Options.Create(new YouTubeMusicOptions()), NullLogger<YtDlpProcess>.Instance);
+        return new YtDlpProcess(Options.Create(new YouTubeMusicOptions()), new AppMetrics(new TestMeterFactory()), NullLogger<YtDlpProcess>.Instance);
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

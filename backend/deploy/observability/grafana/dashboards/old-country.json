@@ -1,13 +1,13 @@
 {
   "uid": "old-country",
   "title": "old-country",
-  "description": "The API: traffic, use cases, downloads, the database, the runtime and the logs.",
+  "description": "The API: traffic, use cases, downloads, playback, live updates, the database, the runtime and the logs.",
   "tags": [
     "old-country"
   ],
   "timezone": "browser",
   "schemaVersion": 41,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "refresh": "30s",
   "time": {
@@ -31,7 +31,7 @@
     {
       "type": "stat",
       "title": "Requests per second",
-      "description": "",
+      "description": "Without the health probes.",
       "id": 2,
       "datasource": {
         "type": "prometheus",
@@ -80,7 +80,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(http_server_request_duration_seconds_count{job=\"old-country-api\"}[$__rate_interval]))",
+          "expr": "sum(rate(http_server_request_duration_seconds_count{job=\"old-country-api\",http_route!~\"/alive|/health\"}[$__rate_interval]))",
           "instant": false
         }
       ]
@@ -88,7 +88,7 @@
     {
       "type": "stat",
       "title": "Server errors (5xx)",
-      "description": "The part of requests that ended with a 5xx status in the last 5 minutes.",
+      "description": "The part of requests that ended with a 5xx status in the last 5 minutes. A refusal by YouTube (Premium only, private, removed) is a 4xx status, so it does not count.",
       "id": 3,
       "datasource": {
         "type": "prometheus",
@@ -145,15 +145,15 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(sum(rate(http_server_request_duration_seconds_count{job=\"old-country-api\",http_response_status_code=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_server_request_duration_seconds_count{job=\"old-country-api\"}[5m])), 1e-9)",
+          "expr": "(sum(rate(http_server_request_duration_seconds_count{job=\"old-country-api\",http_route!~\"/alive|/health\",http_response_status_code=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_server_request_duration_seconds_count{job=\"old-country-api\",http_route!~\"/alive|/health\"}[5m])), 1e-9)",
           "instant": false
         }
       ]
     },
     {
       "type": "stat",
-      "title": "Latency p95",
-      "description": "",
+      "title": "API latency p95",
+      "description": "Without the SignalR hub and the audio routes. Their requests last for a connection or a full file. See the playback row.",
       "id": 4,
       "datasource": {
         "type": "prometheus",
@@ -210,7 +210,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"old-country-api\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"old-country-api\",http_route!~\"/alive|/health|/hubs/.*|.*/audio\"}[5m])))",
           "instant": false
         }
       ]
@@ -322,7 +322,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{job=\"old-country-api\"}[$__rate_interval]))",
+          "expr": "sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{job=\"old-country-api\",http_route!~\"/alive|/health\"}[$__rate_interval]))",
           "legendFormat": "{{http_response_status_code}}"
         }
       ]
@@ -330,7 +330,7 @@
     {
       "type": "timeseries",
       "title": "Latency p95 by route",
-      "description": "Click an exemplar dot to open the trace of a slow request.",
+      "description": "Without the SignalR hub and the audio routes. Click an exemplar dot to open the trace of a slow request.",
       "id": 7,
       "datasource": {
         "type": "prometheus",
@@ -377,7 +377,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"old-country-api\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"old-country-api\",http_route!~\"/alive|/health|/hubs/.*|.*/audio\"}[$__rate_interval])))",
           "legendFormat": "{{http_route}}",
           "exemplar": true
         }
@@ -705,7 +705,7 @@
     },
     {
       "type": "row",
-      "title": "Database and live updates",
+      "title": "Playback and live updates",
       "id": 15,
       "collapsed": false,
       "gridPos": {
@@ -718,8 +718,8 @@
     },
     {
       "type": "timeseries",
-      "title": "Database query duration p95",
-      "description": "",
+      "title": "yt-dlp duration p95 by operation",
+      "description": "fetch: the wait of a first play of a YouTube track. search, playlist, download: the other runs. Click an exemplar dot to open the trace.",
       "id": 16,
       "datasource": {
         "type": "prometheus",
@@ -766,16 +766,16 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(db_client_operation_duration_seconds_bucket{job=\"old-country-api\"}[$__rate_interval])))",
-          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(oldcountry_ytdlp_duration_seconds_bucket{job=\"old-country-api\"}[$__rate_interval])))",
+          "legendFormat": "{{operation}}",
           "exemplar": true
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Database connections",
-      "description": "",
+      "title": "yt-dlp runs by outcome",
+      "description": "A failed run with youtube.premium_only, private or unavailable is a refusal by YouTube, not a fault of the server.",
       "id": 17,
       "datasource": {
         "type": "prometheus",
@@ -786,6 +786,295 @@
         "w": 8,
         "x": 8,
         "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 40,
+            "stacking": {
+              "mode": "normal"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (operation, outcome, error_code) (increase(oldcountry_ytdlp_duration_seconds_count{job=\"old-country-api\"}[$__interval]))",
+          "legendFormat": "{{operation}} {{outcome}} {{error_code}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Audio responses by status",
+      "description": "200 and 206: played. 403: YouTube refuses the track (Premium only, private). 404: gone. 503: rate limited. 502: a failure.",
+      "id": 18,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 40,
+            "stacking": {
+              "mode": "normal"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (http_route, http_response_status_code) (increase(http_server_request_duration_seconds_count{job=\"old-country-api\",http_route=~\".*/audio\"}[$__interval]))",
+          "legendFormat": "{{http_route}} {{http_response_status_code}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Connected apps",
+      "description": "The apps that listen for changes on /hubs/library now.",
+      "id": 19,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(signalr_server_active_connections{job=\"old-country-api\"})",
+          "legendFormat": "apps"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "App connection duration p50",
+      "description": "How long an app stays connected. Short connections that repeat can mean a bad network or a reconnect loop.",
+      "id": 20,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(signalr_server_connection_duration_seconds_bucket{job=\"old-country-api\"}[$__rate_interval])))",
+          "legendFormat": "p50"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Database",
+      "id": 21,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Database query duration p95",
+      "description": "",
+      "id": 22,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 49
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(db_client_operation_duration_seconds_bucket{job=\"old-country-api\"}[$__rate_interval])))",
+          "legendFormat": "p95",
+          "exemplar": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Database connections",
+      "description": "",
+      "id": 23,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 49
       },
       "fieldConfig": {
         "defaults": {
@@ -828,79 +1117,15 @@
       ]
     },
     {
-      "type": "timeseries",
-      "title": "Connected apps (SignalR)",
-      "description": "",
-      "id": 18,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 32
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "stacking": {
-              "mode": "none"
-            },
-            "showPoints": "never"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(signalr_server_active_connections{job=\"old-country-api\"})",
-          "legendFormat": "apps"
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(kestrel_active_connections{job=\"old-country-api\"})",
-          "legendFormat": "HTTP connections"
-        }
-      ]
-    },
-    {
       "type": "row",
       "title": "Runtime",
-      "id": 19,
+      "id": 24,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 57
       },
       "panels": []
     },
@@ -908,7 +1133,7 @@
       "type": "timeseries",
       "title": "CPU",
       "description": "",
-      "id": 20,
+      "id": 25,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -917,7 +1142,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 41
+        "y": 58
       },
       "fieldConfig": {
         "defaults": {
@@ -963,7 +1188,7 @@
       "type": "timeseries",
       "title": "GC heap after last collection",
       "description": "",
-      "id": 21,
+      "id": 26,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -972,7 +1197,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 41
+        "y": 58
       },
       "fieldConfig": {
         "defaults": {
@@ -1018,7 +1243,7 @@
       "type": "timeseries",
       "title": "Exceptions and thread pool queue",
       "description": "",
-      "id": 22,
+      "id": 27,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1027,7 +1252,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 41
+        "y": 58
       },
       "fieldConfig": {
         "defaults": {
@@ -1081,20 +1306,20 @@
     {
       "type": "row",
       "title": "Logs",
-      "id": 23,
+      "id": 28,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 49
+        "y": 66
       },
       "panels": []
     },
     {
       "type": "logs",
       "title": "Warnings and errors",
-      "id": 24,
+      "id": 29,
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -1103,7 +1328,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 50
+        "y": 67
       },
       "options": {
         "showTime": true,
@@ -1125,7 +1350,7 @@
     {
       "type": "logs",
       "title": "All logs",
-      "id": 25,
+      "id": 30,
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -1134,7 +1359,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 60
+        "y": 77
       },
       "options": {
         "showTime": true,

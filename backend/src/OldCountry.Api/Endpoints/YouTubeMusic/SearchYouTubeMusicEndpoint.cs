@@ -14,7 +14,8 @@ internal static class SearchYouTubeMusicEndpoint
         .Validate<SearchYouTubeMusicRequest>()
         .WithName("SearchYouTubeMusic")
         .WithSummary("Search YouTube for songs")
-        .ProducesProblem(StatusCodes.Status502BadGateway);
+        .ProducesProblem(StatusCodes.Status502BadGateway)
+        .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
     private static async Task<Results<Ok<IReadOnlyList<YouTubeSearchResult>>, ProblemHttpResult>> Handle(
         [AsParameters] SearchYouTubeMusicRequest request,

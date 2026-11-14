@@ -3,13 +3,14 @@ using System.Diagnostics;
 using System.Text;
 using Microsoft.Extensions.Options;
 using OldCountry.Application.Abstractions.YouTube;
+using OldCountry.Application.Common.Telemetry;
 using OldCountry.Application.Common.YouTube;
 using OldCountry.Domain.YouTube;
 
 namespace OldCountry.Infrastructure.YouTube;
 
 /// <summary>Runs yt-dlp as a child process. The arguments go through ArgumentList: no shell, and no quote errors.</summary>
-internal sealed partial class YtDlpProcess(IOptions<YouTubeMusicOptions> options, ILogger<YtDlpProcess> logger) : IYtDlp
+internal sealed partial class YtDlpProcess(IOptions<YouTubeMusicOptions> options, AppMetrics metrics, ILogger<YtDlpProcess> logger) : IYtDlp
 {
     private YouTubeMusicOptions Settings => options.Value;
 
@@ -81,7 +82,36 @@ internal sealed partial class YtDlpProcess(IOptions<YouTubeMusicOptions> options
         }
     }
 
+    /// <summary>The trace source of the yt-dlp runs. ServiceDefaults exports it.</summary>
+    public const string ActivitySourceName = "OldCountry.Infrastructure.YtDlp";
+
+    private static readonly ActivitySource Tracing = new(ActivitySourceName);
+
+    /// <summary>
+    /// One run of yt-dlp, with a trace span and a duration measurement.
+    /// Thus a slow search or a slow first play shows the time of yt-dlp in the trace.
+    /// </summary>
     private async Task<string> RunOnceAsync(string operation, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    {
+        using var activity = Tracing.StartActivity($"yt-dlp {operation}", ActivityKind.Client);
+        activity?.SetTag("oldcountry.ytdlp.operation", operation);
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            var output = await RunProcessAsync(operation, arguments, cancellationToken);
+            metrics.YtDlpRan(operation, "ok", null, Stopwatch.GetElapsedTime(started));
+            return output;
+        }
+        catch (YtDlpException exception)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, exception.Code);
+            activity?.SetTag("oldcountry.error.code", exception.Code);
+            metrics.YtDlpRan(operation, "failed", exception.Code, Stopwatch.GetElapsedTime(started));
+            throw;
+        }
+    }
+
+    private async Task<string> RunProcessAsync(string operation, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
         var start = new ProcessStartInfo(Settings.YtDlpPath)
         {

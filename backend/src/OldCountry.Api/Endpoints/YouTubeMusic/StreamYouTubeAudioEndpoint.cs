@@ -15,7 +15,7 @@ internal static class StreamYouTubeAudioEndpoint
         .WithSummary("Play a YouTube video's audio")
         .WithDescription("The first request fetches the audio with yt-dlp (a few seconds); later ones, and range requests for seeking, are served from the cache. Prefer GET /api/tracks/{id}/audio when the track is available offline.")
         .ProducesValidationProblem()
-        .ProducesProblem(StatusCodes.Status502BadGateway);
+        .ProducesYouTubeProblems();
 
     private static async Task<Results<PhysicalFileHttpResult, ValidationProblem, ProblemHttpResult>> Handle(
         string videoId, YouTubeAudioCache cache, CancellationToken cancellationToken)

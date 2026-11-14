@@ -31,7 +31,9 @@ internal sealed class FakeYtDlp : IYtDlp
     }
 
     public Task<string> FetchAudioAsync(YouTubeVideoId videoId, string folder, CancellationToken cancellationToken) =>
-        Task.FromResult(TestAudio.WriteSilentWav(folder, $"{videoId.Value}.wav"));
+        videoId == PremiumOnly.Id
+            ? throw new YtDlpException(YouTubeRefusals.PremiumOnly, $"[youtube] {videoId}: This video is only available to Music Premium members")
+            : Task.FromResult(TestAudio.WriteSilentWav(folder, $"{videoId.Value}.wav"));
 
     /// <summary>A video that only Music Premium members can play. Its download is refused.</summary>
     public static readonly YtVideo PremiumOnly = new(new YouTubeVideoId("premiumSong"), "Premium Song", "Fake Artist", TimeSpan.FromSeconds(2), null);

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OldCountry.Application.Abstractions.YouTube;
+using OldCountry.Application.Common.Telemetry;
 using OldCountry.Application.Common.YouTube;
 using OldCountry.Domain.YouTube;
 using OldCountry.Infrastructure.YouTube;
@@ -30,7 +31,7 @@ public sealed class YtDlpProcessTests : IDisposable
 
     private static YtDlpProcess Process(string path, TimeSpan? timeout = null) =>
         new(Options.Create(new YouTubeMusicOptions { YtDlpPath = path, CommandTimeout = timeout ?? TimeSpan.FromSeconds(30) }),
-            NullLogger<YtDlpProcess>.Instance);
+            new AppMetrics(new TestMeterFactory()), NullLogger<YtDlpProcess>.Instance);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 

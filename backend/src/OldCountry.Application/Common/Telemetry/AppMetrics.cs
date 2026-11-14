@@ -17,6 +17,7 @@ public sealed class AppMetrics
     private readonly Counter<long> _scans;
     private readonly Counter<long> _tracksAdded;
     private readonly Counter<long> _playlistSyncs;
+    private readonly Histogram<double> _ytDlpDuration;
 
     public AppMetrics(IMeterFactory meters)
     {
@@ -29,6 +30,9 @@ public sealed class AppMetrics
         _scans = meter.CreateCounter<long>("oldcountry.library.scans", "{scan}", "Library scans that ended, by outcome.");
         _tracksAdded = meter.CreateCounter<long>("oldcountry.library.tracks_added", "{track}", "Tracks that library scans added.");
         _playlistSyncs = meter.CreateCounter<long>("oldcountry.playlist_syncs", "{sync}", "Automatic playlist syncs, by outcome.");
+        _ytDlpDuration = meter.CreateHistogram<double>(
+            "oldcountry.ytdlp.duration", "s", "The duration of each yt-dlp run (search, fetch for playback, download, playlist), with its outcome.",
+            advice: new InstrumentAdvice<double> { HistogramBucketBoundaries = [0.5, 1, 2, 3, 5, 8, 13, 20, 30, 60, 120, 300] });
     }
 
     /// <summary>Records one use case. <paramref name="outcome"/> is handled, refused, failed or cancelled.</summary>
@@ -49,6 +53,11 @@ public sealed class AppMetrics
         _scans.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
         if (tracksAdded > 0) _tracksAdded.Add(tracksAdded);
     }
+
+    /// <summary>Records one yt-dlp run. <paramref name="outcome"/> is ok or failed.</summary>
+    public void YtDlpRan(string operation, string outcome, string? errorCode, TimeSpan elapsed) =>
+        _ytDlpDuration.Record(elapsed.TotalSeconds,
+            new("operation", operation), new("outcome", outcome), new("error.code", errorCode ?? ""));
 
     /// <summary>Records one automatic sync of a playlist. <paramref name="outcome"/> is synced or failed.</summary>
     public void PlaylistSynced(string outcome) => _playlistSyncs.Add(1, new KeyValuePair<string, object?>("outcome", outcome));

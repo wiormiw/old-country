@@ -9,6 +9,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Shared\TestAudio.cs" Link="Shared\TestAudio.cs" />
+    <Compile Include="..\Shared\TestMeterFactory.cs" Link="Shared\TestMeterFactory.cs" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

@@ -16,8 +16,7 @@ internal static class SyncPlaylistEndpoint
         .WithSummary("Sync an imported playlist with YouTube Music now")
         .WithDescription("Appends songs added on YouTube since the last sync; the playlist's name, description, order and removals "
             + "are kept. The server also does this on its own every YouTubeMusic:PlaylistSyncInterval.")
-        .ProducesProblem(StatusCodes.Status404NotFound)
-        .ProducesProblem(StatusCodes.Status502BadGateway);
+        .ProducesYouTubeProblems();
 
     private static async Task<Results<Ok<ImportPlaylistReport>, ProblemHttpResult, ValidationProblem>> Handle(
         Guid id, ICommandHandler<SyncPlaylistCommand, SyncPlaylistResult> handler, CancellationToken cancellationToken) =>
