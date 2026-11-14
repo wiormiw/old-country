@@ -247,6 +247,10 @@ desktop/
   and work while the window is hidden.
 - **Themes**: System, Light or Dark, saved with the settings and cached for `app/theme.js`, which
   applies it before the app loads so it never flashes the other one.
+- **Keyboard shortcuts** (`app/src/shortcuts.rs`), like Spotify's: Space plays or pauses,
+  Ctrl+→/← next/previous, Ctrl+↑/↓ volume, Ctrl+S shuffle, Ctrl+R repeat, Ctrl+L search (the
+  page's search box, or YouTube search). Cmd works in place of Ctrl on macOS. None of them work
+  while you type in a text field.
 - **Discord Rich Presence** (`src-tauri/src/presence.rs`): while music plays, your Discord profile
   shows "Listening to old-country" like Spotify does: the track (linked to YouTube Music for
   YouTube tracks), the artist, a progress bar, "Playlist: <name>" (or "Library"), and a

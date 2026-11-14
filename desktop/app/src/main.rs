@@ -4,6 +4,7 @@
 mod components;
 mod ipc;
 mod pages;
+mod shortcuts;
 mod state;
 
 use leptos::prelude::*;
@@ -24,6 +25,7 @@ fn App() -> impl IntoView {
 
     view! {
         <Router>
+            <shortcuts::Shortcuts />
             <components::RequestBar />
             <div class="shell">
                 <components::Sidebar />
