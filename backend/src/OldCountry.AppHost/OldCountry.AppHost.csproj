@@ -1,10 +1,10 @@
 <Project Sdk="Aspire.AppHost.Sdk/13.6.5">
-  <!-- Development orchestration: a persistent Postgres container plus the API, with the Aspire dashboard. -->
+  <!-- Local development: a persistent Postgres container, the API, and the Aspire dashboard. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- Holds the dev Postgres password (Parameters:postgres-password); see Program.cs. -->
+    <!-- Keeps the Postgres password for development (Parameters:postgres-password). See Program.cs. -->
     <UserSecretsId>12967a33-34f5-4bf4-87e7-a445f40276a8</UserSecretsId>
-    <!-- Run with `dotnet run`; the Aspire CLI bundle isn't needed for this AppHost. -->
+    <!-- Start it with `dotnet run`. This AppHost does not need the Aspire CLI bundle. -->
     <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
   </PropertyGroup>
   <ItemGroup>

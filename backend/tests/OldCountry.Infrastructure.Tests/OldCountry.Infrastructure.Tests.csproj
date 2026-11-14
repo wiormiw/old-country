@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests of the adapters: the EF model, the yt-dlp process and its output, and the tag reader. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OldCountry.Infrastructure\OldCountry.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\TestAudio.cs" Link="Shared\TestAudio.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="Shouldly" />
+  </ItemGroup>
+</Project>

@@ -1,11 +1,10 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using OldCountry.Api.Common;
-using OldCountry.Api.Features.Tracks;
-using OldCountry.Api.Features.Tracks.ScanLibrary;
-using OldCountry.Api.Tests.Features.Tracks;
+using OldCountry.Application.Common.Paging;
+using OldCountry.Application.Tracks;
+using OldCountry.Application.Tracks.ScanLibrary;
+using OldCountry.Tests.Shared;
 
 namespace OldCountry.Api.Tests.Integration;
 
@@ -32,7 +31,7 @@ public sealed class LibraryScanEndpointTests(ApiFactory factory)
         track.IsAvailableOffline.ShouldBeTrue();
         track.Duration.TotalSeconds.ShouldBe(3, tolerance: 0.1);
 
-        // Scanning again finds the file already known and adds nothing for it.
+        // A second scan finds that the file is known and adds nothing for it.
         var second = await ScanAndWait(client);
         second.Added.ShouldBe(0);
         second.AlreadyKnown.ShouldBeGreaterThanOrEqualTo(1);

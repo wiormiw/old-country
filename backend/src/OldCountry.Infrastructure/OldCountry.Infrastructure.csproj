@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The connections to the outside world: PostgreSQL through EF Core, the yt-dlp process,
+    audio tags through TagLibSharp, and the background loops.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OldCountry.Application\OldCountry.Application.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="TagLibSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="OldCountry.Application.Tests" />
+    <InternalsVisibleTo Include="OldCountry.Infrastructure.Tests" />
+    <InternalsVisibleTo Include="OldCountry.Api.Tests" />
+    <InternalsVisibleTo Include="OldCountry.Architecture.Tests" />
+  </ItemGroup>
+</Project>

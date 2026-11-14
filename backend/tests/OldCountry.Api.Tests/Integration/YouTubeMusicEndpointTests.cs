@@ -1,21 +1,25 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.DependencyInjection;
-using OldCountry.Api.Features.Playlists;
-using OldCountry.Api.Features.YouTubeMusic;
-using OldCountry.Api.Features.Tracks;
-using OldCountry.Api.Features.Tracks.GetTrack;
-using OldCountry.Api.Features.YouTubeMusic.DownloadTracks;
-using OldCountry.Api.Features.YouTubeMusic.ImportPlaylist;
-using OldCountry.Api.Features.YouTubeMusic.SearchYouTubeMusic;
-using OldCountry.Api.Features.YouTubeMusic.SyncPlaylists;
-using OldCountry.Domain.Library;
+using OldCountry.Application.Abstractions.Messaging;
+using OldCountry.Application.Abstractions.YouTube;
+using OldCountry.Application.Downloads;
+using OldCountry.Application.Downloads.ListDownloads;
+using OldCountry.Application.Downloads.QueuePlaylistDownloads;
+using OldCountry.Application.Playlists;
+using OldCountry.Application.Tracks;
+using OldCountry.Application.Tracks.GetTrack;
+using OldCountry.Application.YouTubeMusic.ImportPlaylist;
+using OldCountry.Application.YouTubeMusic.SearchYouTubeMusic;
+using OldCountry.Application.YouTubeMusic.SyncDuePlaylists;
+using OldCountry.Domain.Downloads;
+using OldCountry.Domain.YouTube;
+using OldCountry.Infrastructure.Persistence;
 
 namespace OldCountry.Api.Tests.Integration;
 
-/// <summary>The YouTube Music endpoints against Postgres, with <see cref="FakeYtDlp"/> in place of yt-dlp.</summary>
+/// <summary>The YouTube Music endpoints with Postgres, and <see cref="FakeYtDlp"/> in place of yt-dlp.</summary>
 public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
@@ -32,15 +36,15 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         var report = (await response.Content.ReadFromJsonAsync<ImportPlaylistReport>(Json, Ct)).ShouldNotBeNull();
         report.Name.ShouldBe("Fake Mix");
-        report.Entries.ShouldBe(3);   // Song, Other, Song again
-        report.Skipped.ShouldBe(1);   // the entry without a duration
+        report.Entries.ShouldBe(3);   // Song, Other, and Song again.
+        report.Skipped.ShouldBe(1);   // The entry without a duration.
 
         var playlist = (await client.GetFromJsonAsync<PlaylistResponse>($"/api/playlists/{report.PlaylistId}", Json, Ct)).ShouldNotBeNull();
         playlist.Entries.Select(e => e.Title).ShouldBe(["Fake Song", "Other Song", "Fake Song"]);
         playlist.Entries.ShouldAllBe(e => !e.IsAvailableOffline);
         playlist.Entries[0].Artist.ShouldBe("Fake Artist");
 
-        // Importing again syncs the same playlist: nothing new on YouTube, so nothing changes.
+        // A second import syncs the same playlist. Nothing is new on YouTube, so nothing changes.
         var againResponse = await client.PostAsJsonAsync("/api/youtube-music/imports", new { playlist = "PLfakeMix" }, Ct);
         againResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         var again = (await againResponse.Content.ReadFromJsonAsync<ImportPlaylistReport>(Json, Ct)).ShouldNotBeNull();
@@ -60,12 +64,12 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
         var first = await Import(client, "PLsyncMix");
         first.IsNew.ShouldBeTrue();
 
-        // Edit it here: rename, and remove the first song (which is still on YouTube).
+        // Change it here: a new name, and remove the first track (it is still on YouTube).
         (await client.PutAsJsonAsync($"/api/playlists/{first.PlaylistId}", new { name = "My mix", description = "edited" }, Ct))
             .EnsureSuccessStatusCode();
         (await client.DeleteAsync($"/api/playlists/{first.PlaylistId}/tracks/0", Ct)).EnsureSuccessStatusCode();
 
-        // Meanwhile a song is added on YouTube.
+        // At the same time, a track is added on YouTube.
         youTube.Playlists["PLsyncMix"] = new YtPlaylist("Sync Mix", [FakeYtDlp.Song, FakeYtDlp.Other, FakeYtDlp.Third]);
         var sync = await Import(client, "PLsyncMix");
 
@@ -89,7 +93,7 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
             b = new(new("adoptSong02"), "Adopt B", "Band", TimeSpan.FromSeconds(2), null),
             c = new(new("adoptSong03"), "Adopt C", "Band", TimeSpan.FromSeconds(2), null);
 
-        // A playlist like the ones imported before linking: YouTube songs, no link, its own name.
+        // A playlist like the ones imported before the link existed: YouTube tracks, no link, its own name.
         youTube.Playlists["PLadoptSeed"] = new YtPlaylist("Seed", [a, b]);
         var seed = await Import(client, "PLadoptSeed");
         var trackIds = (await client.GetFromJsonAsync<PlaylistResponse>($"/api/playlists/{seed.PlaylistId}", Json, Ct))
@@ -146,22 +150,29 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
     {
         using var client = factory.CreateApiClient();
         var youTube = (FakeYtDlp)factory.Services.GetRequiredService<IYtDlp>();
-        var scheduler = factory.Services.GetRequiredService<PlaylistSyncScheduler>();
         YtVideo a = new(new("autoSong001"), "Auto A", "Band", TimeSpan.FromSeconds(2), null),
             b = new(new("autoSong002"), "Auto B", "Band", TimeSpan.FromSeconds(2), null),
             c = new(new("autoSong003"), "Auto C", "Band", TimeSpan.FromSeconds(2), null);
         youTube.Playlists["PLautoSync"] = new YtPlaylist("Auto Sync", [a]);
         var imported = await Import(client, "PLautoSync");
 
-        // A song is added on YouTube; a round that treats every sync as old picks it up.
+        // A track is added on YouTube. A round that treats each sync as old finds it.
         youTube.Playlists["PLautoSync"] = new YtPlaylist("Auto Sync", [a, b]);
-        (await scheduler.SyncDueAsync(TimeSpan.Zero, Ct)).ShouldBeGreaterThan(0);
+        (await SyncDue(TimeSpan.Zero)).ShouldBeGreaterThan(0);
         (await Titles(client, imported.PlaylistId)).ShouldBe(["Auto A", "Auto B"]);
 
-        // Just synced, so a round with a one-hour interval leaves it alone.
+        // The playlist synced now, so a round with a one-hour interval does not touch it.
         youTube.Playlists["PLautoSync"] = new YtPlaylist("Auto Sync", [a, b, c]);
-        await scheduler.SyncDueAsync(TimeSpan.FromHours(1), Ct);
+        await SyncDue(TimeSpan.FromHours(1));
         (await Titles(client, imported.PlaylistId)).ShouldBe(["Auto A", "Auto B"]);
+    }
+
+    /// <summary>One round of the automatic sync, as the scheduler loop runs it.</summary>
+    private async Task<int> SyncDue(TimeSpan olderThan)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var handler = scope.ServiceProvider.GetRequiredService<ICommandHandler<SyncDuePlaylistsCommand, int>>();
+        return await handler.Handle(new SyncDuePlaylistsCommand(olderThan), Ct);
     }
 
     private static async Task<string[]> Titles(HttpClient client, Guid playlistId) =>
@@ -269,16 +280,16 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
         jobs[FakeYtDlp.PremiumOnly.Id.Value].State.ShouldBe(DownloadState.Failed);
         jobs[FakeYtDlp.PremiumOnly.Id.Value].ErrorCode.ShouldBe("youtube.premium_only");
 
-        // The refusal stays on the song, so the app can show it after the download list is gone.
+        // The refusal stays on the track, so the app can show it after the download list is empty.
         var playlist = (await client.GetFromJsonAsync<PlaylistResponse>($"/api/playlists/{imported.PlaylistId}", Json, Ct)).ShouldNotBeNull();
         playlist.Entries.Single(e => e.Title == "Free Song").IsAvailableOffline.ShouldBeTrue();
         playlist.Entries.Single(e => e.Title == "Premium Song").DownloadProblem.ShouldBe(DownloadRefusal.PremiumOnly);
 
-        // Asking again: nothing left to get, and the Premium-only song is skipped, not retried...
+        // A second request: nothing is left to get, and the Premium-only track is skipped, not tried again...
         var again = await DownloadPlaylist(client, imported.PlaylistId);
         (again.Queued, again.AlreadyDownloaded, again.Skipped).ShouldBe((0, 1, 1));
 
-        // ...until asked to retry skipped songs (after getting Premium, say).
+        // ...until the request asks to try the skipped tracks again (for example, after you get Premium).
         (await DownloadPlaylist(client, imported.PlaylistId, retrySkipped: true)).Queued.ShouldBe(1);
         await WaitForVideos(client, [FakeYtDlp.PremiumOnly.Id.Value]);
     }
@@ -313,7 +324,7 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
         using var client = factory.CreateApiClient();
         var past = DateTimeOffset.UtcNow.AddHours(-1);
         var orphan = DownloadJob.Queue(new YouTubeVideoId("orphanSong1"), past);
-        orphan.Start(past, TimeSpan.FromMinutes(1)).ShouldBeTrue();   // "running" since an hour ago, lease long gone
+        orphan.Start(past, TimeSpan.FromMinutes(1)).ShouldBeTrue();   // "Running" since one hour ago. The lease ended long ago.
         await AddJobAndWake(orphan);
 
         var done = (await WaitForVideos(client, ["orphanSong1"]))["orphanSong1"];
@@ -340,7 +351,7 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
     {
         await using (var scope = factory.Services.CreateAsyncScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<OldCountry.Api.Persistence.OldCountryDbContext>();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             db.DownloadJobs.Add(job);
             await db.SaveChangesAsync(Ct);
         }
@@ -354,7 +365,7 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
         return (await response.Content.ReadFromJsonAsync<PlaylistDownloadReport>(Json, Ct)).ShouldNotBeNull();
     }
 
-    /// <summary>Waits until the newest job of each video has finished; returns them by video id.</summary>
+    /// <summary>Waits until the newest job of each video is finished. Returns the jobs by video id.</summary>
     private static async Task<Dictionary<string, DownloadStatus>> WaitForVideos(HttpClient client, string[] videoIds)
     {
         for (var attempt = 0; attempt < 200; attempt++)

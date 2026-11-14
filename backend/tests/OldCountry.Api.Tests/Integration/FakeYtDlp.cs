@@ -1,14 +1,15 @@
 using System.Collections.Concurrent;
-using OldCountry.Api.Features.YouTubeMusic;
-using OldCountry.Api.Tests.Features.Tracks;
-using OldCountry.Domain.Library;
+using OldCountry.Application.Abstractions.YouTube;
+using OldCountry.Application.Common.YouTube;
+using OldCountry.Domain.YouTube;
+using OldCountry.Tests.Shared;
 
 namespace OldCountry.Api.Tests.Integration;
 
-/// <summary>Stands in for yt-dlp in API tests: canned search and playlist results, and real (silent) audio files.</summary>
+/// <summary>Replaces yt-dlp in the API tests: fixed search and playlist results, and real (silent) audio files.</summary>
 internal sealed class FakeYtDlp : IYtDlp
 {
-    // Already parsed: trimming YouTube's " - Topic" channel suffix is the parser's job (YtDlpJsonTests).
+    // Already parsed: the parser removes the YouTube " - Topic" channel suffix (see YtDlpJsonTests).
     public static readonly YtVideo Song = new(new YouTubeVideoId("fakeSong001"), "Fake Song", "Fake Artist", TimeSpan.FromSeconds(3), null);
     public static readonly YtVideo Other = new(new YouTubeVideoId("fakeSong002"), "Other Song", "Fake Artist", TimeSpan.FromSeconds(2), null);
     public static readonly YtVideo NoDuration = new(new YouTubeVideoId("fakeSong003"), "Live Stream", "Someone", null, null);
@@ -18,7 +19,7 @@ internal sealed class FakeYtDlp : IYtDlp
 
     public static readonly YtVideo Third = new(new YouTubeVideoId("fakeSong004"), "Third Song", "Fake Artist", TimeSpan.FromSeconds(2), null);
 
-    /// <summary>What each playlist (by list id) holds "on YouTube" now; tests change it between imports.</summary>
+    /// <summary>What each playlist (by list id) holds "on YouTube" now. Tests change it between imports.</summary>
     public ConcurrentDictionary<string, YtPlaylist> Playlists { get; } = new();
 
     public Task<YtPlaylist> GetPlaylistAsync(Uri playlistUrl, CancellationToken cancellationToken)
@@ -32,10 +33,10 @@ internal sealed class FakeYtDlp : IYtDlp
     public Task<string> FetchAudioAsync(YouTubeVideoId videoId, string folder, CancellationToken cancellationToken) =>
         Task.FromResult(TestAudio.WriteSilentWav(folder, $"{videoId.Value}.wav"));
 
-    /// <summary>A video only Music Premium members may play: downloading it is refused.</summary>
+    /// <summary>A video that only Music Premium members can play. Its download is refused.</summary>
     public static readonly YtVideo PremiumOnly = new(new YouTubeVideoId("premiumSong"), "Premium Song", "Fake Artist", TimeSpan.FromSeconds(2), null);
 
-    /// <summary>Videos (by id) that answer "429 Too Many Requests" this many more times before downloading.</summary>
+    /// <summary>Videos (by id) that answer "429 Too Many Requests" this number of more times before they download.</summary>
     public ConcurrentDictionary<string, int> RateLimitedTimes { get; } = new();
 
     public Task<YtDownload> DownloadAudioAsync(YouTubeVideoId videoId, string folder, CancellationToken cancellationToken)
@@ -53,7 +54,7 @@ internal sealed class FakeYtDlp : IYtDlp
         return Task.FromResult(new YtDownload(path, video with { Artist = "Fake Artist" }, 128, 8_000));
     }
 
-    /// <summary>The video with this id from the canned ones or any playlist a test set up.</summary>
+    /// <summary>The video with this id, from the fixed videos or from a playlist that a test set up.</summary>
     private YtVideo Known(YouTubeVideoId id) =>
         new[] { Song, Other, Third, PremiumOnly }.Concat(Playlists.Values.SelectMany(p => p.Entries)).FirstOrDefault(v => v.Id == id)
         ?? new YtVideo(id, $"Video {id}", "Fake Artist", TimeSpan.FromSeconds(2), null);

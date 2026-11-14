@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- What every host shares: telemetry, health endpoints and HTTP resilience. -->
+  <!-- What all hosts share: telemetry, health endpoints and HTTP resilience. -->
   <PropertyGroup>
     <IsAspireSharedProject>true</IsAspireSharedProject>
   </PropertyGroup>

@@ -11,17 +11,17 @@ using OpenTelemetry.Trace;
 namespace Microsoft.Extensions.Hosting;
 
 /// <summary>
-/// What every old-country host shares, after .NET Aspire's ServiceDefaults: OpenTelemetry for
-/// logs, traces and metrics, health checks, and resilient service-discovered HttpClients.
-/// Exports over OTLP when OTEL_EXPORTER_OTLP_ENDPOINT is set (the Aspire dashboard sets it).
+/// What all old-country hosts share, based on the Aspire ServiceDefaults: OpenTelemetry for logs,
+/// traces and metrics, health checks, and resilient HttpClients with service discovery.
+/// It exports over OTLP when OTEL_EXPORTER_OTLP_ENDPOINT is set (the Aspire dashboard sets it).
 /// </summary>
 public static class Extensions
 {
     private const string HealthPath = "/health";
     private const string AlivePath = "/alive";
 
-    /// <summary>The application's own trace sources (use-case spans from the logging decorator).</summary>
-    private static readonly string[] ApplicationSources = ["OldCountry.Api"];
+    /// <summary>The trace sources of the app itself: one span for each use case, from the logging decorator.</summary>
+    private static readonly string[] ApplicationSources = ["OldCountry.Application"];
 
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
@@ -31,7 +31,7 @@ public static class Extensions
         builder.Services.AddServiceDiscovery();
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            // Outbound calls (YouTube Music, later) retry, time out and break the circuit by default.
+            // Outbound calls (to YouTube Music, later) retry, stop after a timeout and break the circuit by default.
             http.AddStandardResilienceHandler();
             http.AddServiceDiscovery();
         });
@@ -52,15 +52,15 @@ public static class Extensions
                 .AddHttpClientInstrumentation()
                 .AddRuntimeInstrumentation()
                 .AddMeter("Npgsql")
-                // SignalR: open connections and their durations.
+                // SignalR: the open connections and their durations.
                 .AddMeter("Microsoft.AspNetCore.Http.Connections"))
             .WithTracing(tracing => tracing
                 .AddSource(builder.Environment.ApplicationName)
                 .AddSource(ApplicationSources)
-                // SignalR: a span per hub method call, connect and disconnect.
+                // SignalR: a span for each hub method call, connect and disconnect.
                 .AddSource("Microsoft.AspNetCore.SignalR.Server")
                 .AddAspNetCoreInstrumentation(aspnet =>
-                    // Probes every few seconds would otherwise be most of the traces.
+                    // Do not trace health probes. They occur every few seconds and would hide the real requests.
                     aspnet.Filter = context =>
                         !context.Request.Path.StartsWithSegments(HealthPath) && !context.Request.Path.StartsWithSegments(AlivePath))
                 .AddHttpClientInstrumentation()
@@ -73,12 +73,12 @@ public static class Extensions
 
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
-        // "live" answers whether the process should be restarted; everything else, whether it should get traffic.
+        // "live" tells if the process must restart. All other checks tell if it can get traffic.
         builder.Services.AddHealthChecks().AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
         return builder;
     }
 
-    /// <summary><c>/health</c> for readiness (every check) and <c>/alive</c> for liveness (only "live" checks).</summary>
+    /// <summary><c>/health</c> for readiness (all checks) and <c>/alive</c> for liveness (only the "live" checks).</summary>
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
         app.MapHealthChecks(HealthPath);

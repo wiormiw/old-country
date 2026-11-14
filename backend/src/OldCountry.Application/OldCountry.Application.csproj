@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The use cases, one folder for each feature (Tracks, Playlists, Downloads, YouTubeMusic).
+    This project does not know HTTP, the database server, or the yt-dlp process.
+    It uses Postgres features only in EF queries (see the architecture tests).
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OldCountry.Domain\OldCountry.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="OldCountry.Application.Tests" />
+    <InternalsVisibleTo Include="OldCountry.Infrastructure.Tests" />
+    <InternalsVisibleTo Include="OldCountry.Api.Tests" />
+    <InternalsVisibleTo Include="OldCountry.Architecture.Tests" />
+  </ItemGroup>
+</Project>

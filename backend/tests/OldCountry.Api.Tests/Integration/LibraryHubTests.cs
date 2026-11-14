@@ -1,33 +1,33 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
-using OldCountry.Api.Common.Realtime;
-using OldCountry.Api.Features.Playlists;
+using OldCountry.Api.Realtime;
+using OldCountry.Application.Playlists;
+using OldCountry.Application.Realtime;
 
 namespace OldCountry.Api.Tests.Integration;
 
 /// <summary>
-/// The apps' live updates, end to end: a real SignalR client connected over WebSockets (as the
-/// desktop app connects: no negotiate call), changes made through the HTTP API.
-/// Tests share one server, so each looks only for the changes it made.
+/// The live updates of the apps, end to end: a real SignalR client on WebSockets (the same as the
+/// desktop app: no negotiate call), and changes through the HTTP API.
+/// The tests share one server, so each test looks only for its own changes.
 /// </summary>
 public sealed class LibraryHubTests(ApiFactory factory)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    /// <summary>A video no other test downloads (the fake yt-dlp names unknown ones "Video &lt;id&gt;").</summary>
+    /// <summary>A video that no other test downloads (the fake yt-dlp names unknown videos "Video &lt;id&gt;").</summary>
     private static readonly string[] NewsVideo = ["newsSong001"];
 
-    /// <summary>Long enough for the broadcaster's merge window, short enough to keep tests quick.</summary>
+    /// <summary>Long enough for the merge window of the broadcaster, and short enough to keep the tests fast.</summary>
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(5);
 
     private sealed class Listener(HubConnection connection, Channel<LibraryChanges> heard, Channel<Announcement> news) : IAsyncDisposable
     {
-        /// <summary>The first announcement matching <paramref name="wanted"/>, or null if none comes in time.</summary>
+        /// <summary>The first announcement that matches <paramref name="wanted"/>, or null if none arrives in time.</summary>
         public async Task<Announcement?> WaitForNews(Func<Announcement, bool> wanted, TimeSpan within)
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
@@ -46,7 +46,7 @@ public sealed class LibraryHubTests(ApiFactory factory)
             }
         }
 
-        /// <summary>The first change matching <paramref name="wanted"/>, or null if none comes in time.</summary>
+        /// <summary>The first change that matches <paramref name="wanted"/>, or null if none arrives in time.</summary>
         public async Task<LibraryChanges?> WaitFor(Func<LibraryChanges, bool> wanted, TimeSpan within)
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
@@ -70,7 +70,7 @@ public sealed class LibraryHubTests(ApiFactory factory)
 
     private async Task<Listener> Listen()
     {
-        using var _ = factory.CreateApiClient(); // skips the test when Docker isn't running
+        using var _ = factory.CreateApiClient(); // Skips the test when Docker does not run.
         var heard = Channel.CreateUnbounded<LibraryChanges>();
         var news = Channel.CreateUnbounded<Announcement>();
         var connection = new HubConnectionBuilder()
@@ -81,7 +81,7 @@ public sealed class LibraryHubTests(ApiFactory factory)
                 options.WebSocketFactory = async (context, cancellationToken) =>
                     await factory.Server.CreateWebSocketClient().ConnectAsync(context.Uri, cancellationToken);
             })
-            // The same JSON as the server's hub: enums as their names.
+            // The same JSON as the hub of the server: enums as their names.
             .AddJsonProtocol(json => json.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
             .Build();
         connection.On<LibraryChanges>(nameof(ILibraryClient.Changed), changes => heard.Writer.TryWrite(changes));
@@ -118,7 +118,7 @@ public sealed class LibraryHubTests(ApiFactory factory)
         var id = (await created.Content.ReadFromJsonAsync<PlaylistSummaryResponse>(Ct)).ShouldNotBeNull().Id;
         (await listener.WaitFor(c => c.Playlists.Contains(id), Patience)).ShouldNotBeNull();
 
-        // A track that doesn't exist: the command refuses inside its transaction, which rolls back.
+        // A track that does not exist: the command refuses in its transaction, and the transaction rolls back.
         var refused = await client.PostAsJsonAsync($"/api/playlists/{id}/tracks", new { trackIds = new[] { Guid.NewGuid() } }, Ct);
         refused.IsSuccessStatusCode.ShouldBeFalse();
 

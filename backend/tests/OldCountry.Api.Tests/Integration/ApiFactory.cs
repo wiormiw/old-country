@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using OldCountry.Api.Features.YouTubeMusic;
+using OldCountry.Application.Abstractions.YouTube;
 using Testcontainers.PostgreSql;
 
 [assembly: AssemblyFixture(typeof(OldCountry.Api.Tests.Integration.ApiFactory))]
@@ -11,17 +11,17 @@ using Testcontainers.PostgreSql;
 namespace OldCountry.Api.Tests.Integration;
 
 /// <summary>
-/// The real API against a throwaway Postgres in Docker, migrated on startup like Development.
-/// When Docker isn't reachable the integration tests are skipped instead of failing.
+/// The real API with a temporary Postgres in Docker. It migrates at startup, the same as Development.
+/// When Docker is not available, the integration tests are skipped. They do not fail.
 /// </summary>
 public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    // Built in InitializeAsync: Testcontainers probes Docker already when building the container.
+    // Built in InitializeAsync, because Testcontainers already looks for Docker when it builds the container.
     private PostgreSqlContainer? _postgres;
 
     public string? DockerUnavailableReason { get; private set; }
 
-    /// <summary>The API's only library folder. Scans are manual-only here, so tests decide when they run.</summary>
+    /// <summary>The one library folder of the API. Here the scans are only manual, so the tests decide when they run.</summary>
     public string LibraryRoot { get; } = Directory.CreateTempSubdirectory("old-country-library-").FullName;
 
     public async ValueTask InitializeAsync()
@@ -37,8 +37,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             return;
         }
 
-        // Start the server (and its migrations) once, here, before tests run in parallel: two
-        // tests asking for a client at the same moment would otherwise each start one.
+        // Start the server (and its migrations) one time, here, before the tests run in parallel.
+        // Otherwise two tests that ask for a client at the same time would each start a server.
         using var warmUp = CreateClient();
     }
 
@@ -57,10 +57,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Library:ScanOnStartup", "false");
         builder.UseSetting("Library:RescanInterval", "00:00:00");
         builder.UseSetting("YouTubeMusic:StreamCacheFolder", Path.Combine(LibraryRoot, ".stream-cache"));
-        // Downloads back to back, and a one-second rest when "rate limited", so tests stay fast.
+        // No pause between downloads, and a rest of one second for a rate limit, so the tests stay fast.
         builder.UseSetting("YouTubeMusic:DownloadPause", "00:00:00");
         builder.UseSetting("YouTubeMusic:RateLimitPause", "00:00:01");
-        builder.UseSetting("YouTubeMusic:PlaylistSyncInterval", "00:00:00");   // tests run sync rounds themselves
+        builder.UseSetting("YouTubeMusic:PlaylistSyncInterval", "00:00:00");   // The tests run the sync rounds themselves.
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IYtDlp>();

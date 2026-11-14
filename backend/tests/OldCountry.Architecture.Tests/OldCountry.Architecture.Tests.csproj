@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- The architecture rules, checked in the compiled IL of each layer and in the source files. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\OldCountry.Api\OldCountry.Api.csproj" />
   </ItemGroup>

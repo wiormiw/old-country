@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- End-to-end tests through HTTP and SignalR, with a real PostgreSQL in a container. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\OldCountry.Api\OldCountry.Api.csproj" />
   </ItemGroup>
@@ -8,6 +9,9 @@
     <PackageReference Include="Shouldly" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\TestAudio.cs" Link="Shared\TestAudio.cs" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

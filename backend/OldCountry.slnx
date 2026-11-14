@@ -8,12 +8,16 @@
   <Folder Name="/src/">
     <Project Path="src/OldCountry.AppHost/OldCountry.AppHost.csproj" />
     <Project Path="src/OldCountry.Api/OldCountry.Api.csproj" />
+    <Project Path="src/OldCountry.Application/OldCountry.Application.csproj" />
     <Project Path="src/OldCountry.Domain/OldCountry.Domain.csproj" />
+    <Project Path="src/OldCountry.Infrastructure/OldCountry.Infrastructure.csproj" />
     <Project Path="src/OldCountry.ServiceDefaults/OldCountry.ServiceDefaults.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OldCountry.Api.Tests/OldCountry.Api.Tests.csproj" />
+    <Project Path="tests/OldCountry.Application.Tests/OldCountry.Application.Tests.csproj" />
     <Project Path="tests/OldCountry.Architecture.Tests/OldCountry.Architecture.Tests.csproj" />
     <Project Path="tests/OldCountry.Domain.Tests/OldCountry.Domain.Tests.csproj" />
+    <Project Path="tests/OldCountry.Infrastructure.Tests/OldCountry.Infrastructure.Tests.csproj" />
   </Folder>
 </Solution>

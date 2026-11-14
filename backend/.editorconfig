@@ -16,6 +16,9 @@ csharp_style_namespace_declarations = file_scoped:error
 csharp_using_directive_placement = outside_namespace:error
 dotnet_sort_system_directives_first = true
 
+# No unused using directives (IDE0005). The build fails on them.
+dotnet_diagnostic.IDE0005.severity = warning
+
 # Immutability: fields that are only assigned in the constructor must be readonly (IDE0044),
 # structs whose members never mutate must be readonly (IDE0250), and so must non-mutating
 # struct members (IDE0251).
@@ -33,6 +36,9 @@ dotnet_diagnostic.CA1848.severity = error
 dotnet_diagnostic.CA2254.severity = error
 dotnet_diagnostic.CA1727.severity = error
 dotnet_diagnostic.CA1873.severity = error
+
+# "Queue" is a real queue here (LibraryScanQueue holds the next scan), not a misused suffix.
+dotnet_code_quality.CA1711.allowed_suffixes = Queue
 
 # Generated EF migrations keep EF's own style.
 [**/Migrations/*.cs]

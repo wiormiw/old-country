@@ -1,9 +1,8 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
-using OldCountry.Api.Common;
-using OldCountry.Api.Features.Tracks;
-using OldCountry.Api.Features.Tracks.GetTrack;
+using OldCountry.Application.Common.Paging;
+using OldCountry.Application.Tracks;
+using OldCountry.Application.Tracks.GetTrack;
 
 namespace OldCountry.Api.Tests.Integration;
 
@@ -40,7 +39,7 @@ public sealed class TracksEndpointTests(ApiFactory factory)
         var track = (await created.Content.ReadFromJsonAsync<TrackResponse>(Json, Ct)).ShouldNotBeNull();
         track.Title.ShouldBe("Dust Road");
         track.IsAvailableOffline.ShouldBeTrue();
-        track.Codec.ShouldBe(Domain.Library.AudioCodec.Flac);
+        track.Codec.ShouldBe(Domain.Tracks.AudioCodec.Flac);
 
         var fetched = (await client.GetFromJsonAsync<TrackDetailResponse>(created.Headers.Location, Json, Ct)).ShouldNotBeNull();
         fetched.Track.ShouldBe(track);
@@ -134,7 +133,7 @@ public sealed class TracksEndpointTests(ApiFactory factory)
         var byTitle = await client.GetFromJsonAsync<PagedResponse<TrackResponse>>($"/api/tracks?search=SEARCHABLE%20{marker}", Json, Ct);
         byTitle.ShouldNotBeNull().Items.ShouldHaveSingleItem().Title.ShouldBe($"Searchable {marker}");
 
-        // "%" is a literal percent sign, not "anything".
+        // "%" is a literal percent sign. It does not mean "anything".
         var literal = await client.GetFromJsonAsync<PagedResponse<TrackResponse>>($"/api/tracks?search={Uri.EscapeDataString($"100% {marker}")}", Json, Ct);
         literal.ShouldNotBeNull().Items.ShouldHaveSingleItem().Title.ShouldBe($"100% {marker}");
 

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests of the use cases and the pipeline that need no host and no database server. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OldCountry.Application\OldCountry.Application.csproj" />
+    <!-- Some pipeline tests build a real (never connected) AppDbContext and the TagLib reader. -->
+    <ProjectReference Include="..\..\src\OldCountry.Infrastructure\OldCountry.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\TestAudio.cs" Link="Shared\TestAudio.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="Shouldly" />
+  </ItemGroup>
+</Project>

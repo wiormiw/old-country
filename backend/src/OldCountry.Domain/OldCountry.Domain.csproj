@@ -1,3 +1,3 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Depends on nothing: the rules of the music library, in plain C#. -->
+  <!-- The rules of the music library, in plain C#. This project uses no other project and no package. -->
 </Project>

@@ -1,15 +1,17 @@
 using System.Text.Json.Serialization;
-using OldCountry.Api.Common.Events;
-using OldCountry.Api.Common.Realtime;
-using OldCountry.Api.Features;
-using OldCountry.Api.Middleware;
-using OldCountry.Api.Persistence;
+using OldCountry.Api.Endpoints;
+using OldCountry.Api.Http;
+using OldCountry.Api.Realtime;
+using OldCountry.Application;
+using OldCountry.Infrastructure;
+using OldCountry.Infrastructure.Persistence;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
-builder.AddPersistence();
+builder.AddInfrastructure();
+builder.Services.AddApplication();
 
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
@@ -23,9 +25,6 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     json.AllowDuplicateProperties = false;
     json.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
 });
-
-builder.Services.AddDomainEvents();
-builder.Services.AddFeatures();
 builder.Services.AddRealtime(builder.Environment);
 
 var app = builder.Build();
@@ -42,7 +41,7 @@ if (app.Environment.IsDevelopment())
 await app.MigrateDatabaseAsync();
 
 app.MapDefaultEndpoints();
-app.MapFeatures();
+app.MapApiEndpoints();
 app.MapRealtime();
 
 await app.RunAsync();

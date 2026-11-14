@@ -1,22 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <!--
-    The host and every feature slice. Hybrid architecture: the Domain project is the only "clean"
-    layer; everything else is organised by feature (Features/<Feature>/<UseCase>), with shared
-    plumbing in Common/ and Persistence/.
+    The host: HTTP endpoints, the SignalR hub, and the conversion of results to problem details.
+    The use cases are in OldCountry.Application. The adapters are in OldCountry.Infrastructure.
   -->
   <ItemGroup>
-    <ProjectReference Include="..\OldCountry.Domain\OldCountry.Domain.csproj" />
+    <ProjectReference Include="..\OldCountry.Application\OldCountry.Application.csproj" />
+    <ProjectReference Include="..\OldCountry.Infrastructure\OldCountry.Infrastructure.csproj" />
     <ProjectReference Include="..\OldCountry.ServiceDefaults\OldCountry.ServiceDefaults.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FluentValidation" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Scalar.AspNetCore" />
-    <PackageReference Include="TagLibSharp" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="OldCountry.Api.Tests" />

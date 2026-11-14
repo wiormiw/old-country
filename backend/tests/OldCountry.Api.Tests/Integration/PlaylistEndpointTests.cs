@@ -1,10 +1,9 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using OldCountry.Api.Features.Playlists;
-using OldCountry.Api.Features.Tracks;
-using OldCountry.Api.Features.Tracks.GetTrack;
+using OldCountry.Application.Playlists;
+using OldCountry.Application.Tracks;
+using OldCountry.Application.Tracks.GetTrack;
 
 namespace OldCountry.Api.Tests.Integration;
 
@@ -60,7 +59,7 @@ public sealed class PlaylistEndpointTests(ApiFactory factory)
         summary.Name.ShouldBe("Night drive");
         summary.UpdatedAt.ShouldNotBeNull();
 
-        // The track's detail page lists the playlists it's in.
+        // The detail page of the track lists the playlists that hold it.
         var detail = (await client.GetFromJsonAsync<TrackDetailResponse>($"/api/tracks/{one}", Json, Ct)).ShouldNotBeNull();
         detail.Playlists.ShouldContain(p => p.Id == id && p.Name == "Night drive");
 

@@ -7,18 +7,20 @@
     <EfCoreVersion>11.0.0-rc.3.26522.148</EfCoreVersion>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Api: persistence -->
+    <!-- Application and Infrastructure: persistence -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="11.0.0-rc.3" />
 
-    <!-- Api: HTTP -->
+    <!-- Application: validation and hosting abstractions -->
     <PackageVersion Include="FluentValidation" Version="12.2.0" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="11.0.0" />
+    <!-- Api: HTTP -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="11.0.0" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.20.0" />
 
-    <!-- Api: audio tag reading for library scans -->
+    <!-- Infrastructure: audio tag reading for library scans -->
     <PackageVersion Include="TagLibSharp" Version="2.3.0" />
 
     <!-- ServiceDefaults -->

@@ -328,18 +328,28 @@ Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details wi
 ```
 backend/
   src/
-    OldCountry.Domain/            entities, value objects, rules; references nothing
-    OldCountry.Api/
-      Features/<Feature>/<UseCase>/   one file per use case: request, validator, handler, endpoint
-      Common/                         messaging, decorators, validation, errors, shared library helpers
-      Persistence/                    DbContext, conventions, configurations, migrations
+    OldCountry.Domain/            entities, value objects, ids, domain events, errors; references nothing
+      Artists/ Tracks/ Playlists/ Downloads/ YouTube/ Common/ Errors/
+    OldCountry.Application/       the use cases; knows no HTTP, no yt-dlp process, no database server
+      Tracks/ Playlists/ Downloads/ YouTubeMusic/    feature slices: <Feature>/<UseCase>/, one type per file
+      Announcements/              domain-event handlers that become news for the apps
+      Abstractions/               IAppDbContext, IYtDlp, IAudioMetadataReader, messaging interfaces
+      Pipeline/                   logging and transaction decorators, validation helpers
+      Events/ Realtime/           domain-event dispatch, the change feed for the hub
+      Common/<Topic>/             shared by two or more features (Library, YouTube, Paging)
+    OldCountry.Infrastructure/    the adapters: EF Core + Npgsql (AppDbContext, migrations, interceptors),
+                                  the yt-dlp process, TagLib#, and the background loops
+    OldCountry.Api/               Program.cs, endpoints, problem details, the SignalR hub
     OldCountry.ServiceDefaults/   OpenTelemetry, health checks, resilient HttpClients
     OldCountry.AppHost/           Aspire orchestration for development
-  tests/                          Domain, Api (unit + integration), Architecture
+  tests/                          Domain, Application, Infrastructure, Api (integration), Architecture
 ```
 
-- **Hybrid architecture.** Only the Domain is a "clean" layer. Everything else is vertical feature slices in one project; features never reference each other (enforced by architecture tests) and share only through Domain and `Common/`.
-- **Explicit DI, no mediator.** Each feature lists its registrations (`TracksFeature.AddServices`), and `FeatureRegistry` lists every feature. Handlers are wrapped in hand-composed decorators (logging → transaction → handler) in `Common/Messaging/HandlerRegistration.cs`. No MediatR, AutoMapper or assembly scanning.
+- **Clean Architecture projects, vertical slices inside.** The references point inward: Api → Infrastructure → Application → Domain, and the compiler enforces it. Inside Application, each feature is a folder of use cases (`Playlists/CreatePlaylist/CreatePlaylistCommand.cs`, `…Handler.cs`, `…Result.cs`). Features never reference each other; they share only through Domain, `Abstractions/` and `Common/<Topic>/`. Architecture tests check all of this, plus one top-level type per file.
+- **No repositories, no unit-of-work class.** Handlers query `IAppDbContext` directly. The context is the unit of work, and `TransactionDecorator` gives each command one transaction. Application may use Postgres features in queries (`ILike`, `FOR UPDATE SKIP LOCKED`), but connections, `UseNpgsql` and migrations stay in Infrastructure.
+- **Background loops only wait and repeat.** The download worker, the playlist sync scheduler and the library scanner live in Infrastructure; each round of work is a use case in Application (`ProcessNextDownload`, `SyncDuePlaylists`, `ScanLibrary`), so it is testable without a host.
+- **Explicit DI, no mediator.** `AddApplication()` lists every feature, and each feature lists its registrations (`TracksFeature.AddServices`). Handlers are wrapped in hand-composed decorators (logging → transaction → handler) in `Pipeline/HandlerRegistration.cs`. `AddInfrastructure()` registers the adapters and loops; `ApiEndpoints` maps every route. No MediatR, AutoMapper or assembly scanning.
+- **Comments** follow ASD-STE100 Simplified Technical English: short sentences, active voice, one idea per sentence, and they say why, not what.
 - **Results as C# 15 unions.** A use case returns e.g. `union GetTrackResult(TrackResponse, NotFoundError)`; endpoints `switch` over it exhaustively, so a new outcome won't compile until it is handled. Exceptions are for bugs.
 - **Validation** with FluentValidation: one validator per request, run by an endpoint filter (`.Validate<T>()`) before the handler. The domain still enforces its own invariants.
 - **Value objects are records**: strongly-typed ids (`readonly record struct`) via model-wide converters, `LocalFile`/`AudioQuality` as EF Core complex types, playlist entries as a JSON complex collection. snake_case names throughout.
@@ -455,4 +465,4 @@ Integration tests start a throwaway PostgreSQL with Testcontainers and are skipp
 - Home's **Jump back in** lists the playlists changed most recently (renamed, songs added, synced), not the ones played most recently; the server doesn't record plays.
 
 - EF Core is pinned to `11.0.0-rc.3` because the Npgsql provider for EF Core 11 is still a release candidate and requires that exact build. Bump `EfCoreVersion` in `backend/Directory.Packages.props` together with Npgsql when it ships GA.
-- `dotnet tool restore` installs the matching `dotnet-ef` for migrations: `dotnet ef migrations add <Name> --project src/OldCountry.Api --output-dir Persistence/Migrations`.
+- `dotnet tool restore` installs the matching `dotnet-ef` for migrations: `dotnet ef migrations add <Name> --project src/OldCountry.Infrastructure --startup-project src/OldCountry.Api --output-dir Persistence/Migrations`.

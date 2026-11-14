@@ -8,6 +8,8 @@ WORKDIR /src
 # Project files first, so the restore layer is reused until a dependency changes.
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src/OldCountry.Domain/OldCountry.Domain.csproj src/OldCountry.Domain/
+COPY src/OldCountry.Application/OldCountry.Application.csproj src/OldCountry.Application/
+COPY src/OldCountry.Infrastructure/OldCountry.Infrastructure.csproj src/OldCountry.Infrastructure/
 COPY src/OldCountry.ServiceDefaults/OldCountry.ServiceDefaults.csproj src/OldCountry.ServiceDefaults/
 COPY src/OldCountry.Api/OldCountry.Api.csproj src/OldCountry.Api/
 RUN dotnet restore src/OldCountry.Api/OldCountry.Api.csproj
