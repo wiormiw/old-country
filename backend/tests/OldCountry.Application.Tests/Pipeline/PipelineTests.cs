@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -5,6 +6,7 @@ using OldCountry.Application.Abstractions.Audio;
 using OldCountry.Application.Abstractions.Messaging;
 using OldCountry.Application.Abstractions.Persistence;
 using OldCountry.Application.Common.Library;
+using OldCountry.Application.Common.Telemetry;
 using OldCountry.Application.Pipeline;
 using OldCountry.Application.Tracks;
 using OldCountry.Application.Tracks.AddTrack;
@@ -23,6 +25,8 @@ public sealed class PipelineTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddMetrics();
+        services.AddSingleton<AppMetrics>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ArtistDirectory>();
         // It never connects. The decorators only need an instance.
@@ -76,6 +80,31 @@ public sealed class PipelineTests
         entry.Level.ShouldBe(LogLevel.Information);
         entry.EventId.Id.ShouldBe(101);
         entry.Message.ShouldContain("GetTrackQuery refused with track.not_found");
+    }
+
+    [Fact]
+    public async Task Each_use_case_records_its_duration_with_its_outcome_and_error_code()
+    {
+        using var provider = Build(services => services.AddQuery<GetTrackQuery, GetTrackResult, AlwaysNotFound>());
+        var measured = new List<(double Seconds, Dictionary<string, object?> Tags)>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (instrument.Meter.Name == AppMetrics.MeterName && instrument.Name == "oldcountry.use_case.duration") l.EnableMeasurementEvents(instrument);
+        };
+        listener.SetMeasurementEventCallback<double>((_, value, tags, _) =>
+            measured.Add((value, tags.ToArray().ToDictionary(tag => tag.Key, tag => tag.Value))));
+        listener.Start();
+        using var scope = provider.CreateScope();
+
+        await scope.ServiceProvider.GetRequiredService<IQueryHandler<GetTrackQuery, GetTrackResult>>()
+            .Handle(new GetTrackQuery(TrackId.New()), TestContext.Current.CancellationToken);
+
+        var (seconds, tags) = measured.ShouldHaveSingleItem();
+        seconds.ShouldBeGreaterThanOrEqualTo(0);
+        tags["use_case"].ShouldBe("GetTrackQuery");
+        tags["outcome"].ShouldBe("refused");
+        tags["error.code"].ShouldBe("track.not_found");
     }
 
     internal sealed class AlwaysNotFound : IQueryHandler<GetTrackQuery, GetTrackResult>

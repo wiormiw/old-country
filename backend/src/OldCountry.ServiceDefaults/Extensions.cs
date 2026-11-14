@@ -52,6 +52,8 @@ public static class Extensions
                 .AddHttpClientInstrumentation()
                 .AddRuntimeInstrumentation()
                 .AddMeter("Npgsql")
+                // The metrics of old-country itself (AppMetrics.MeterName in Application).
+                .AddMeter("OldCountry.Application")
                 // SignalR: the open connections and their durations.
                 .AddMeter("Microsoft.AspNetCore.Http.Connections"))
             .WithTracing(tracing => tracing

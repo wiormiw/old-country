@@ -4,6 +4,7 @@ using OldCountry.Application.Abstractions.Audio;
 using OldCountry.Application.Abstractions.Messaging;
 using OldCountry.Application.Abstractions.Persistence;
 using OldCountry.Application.Common.Library;
+using OldCountry.Application.Common.Telemetry;
 using OldCountry.Domain.Artists;
 using OldCountry.Domain.Errors;
 using OldCountry.Domain.Tracks;
@@ -16,6 +17,7 @@ internal sealed partial class ScanLibraryHandler(
     IAudioMetadataReader reader,
     IOptions<LibraryOptions> options,
     TimeProvider clock,
+    AppMetrics metrics,
     ILogger<ScanLibraryHandler> logger) : ICommandHandler<ScanLibraryCommand, ScanLibraryResult>
 {
     private const int BatchSize = 100;
@@ -31,7 +33,11 @@ internal sealed partial class ScanLibraryHandler(
     public async Task<ScanLibraryResult> Handle(ScanLibraryCommand command, CancellationToken cancellationToken)
     {
         var roots = options.Value.Roots;
-        if (LibraryOptions.Check(roots) is { } invalid) return invalid;
+        if (LibraryOptions.Check(roots) is { } invalid)
+        {
+            metrics.ScanEnded("refused", 0);
+            return invalid;
+        }
 
         var startedAt = clock.GetUtcNow();
         Log.ScanStarted(logger, command.Trigger, roots.Count);
@@ -82,6 +88,7 @@ internal sealed partial class ScanLibraryHandler(
         var report = new ScanReport(command.Trigger, filesSeen, added, alreadyKnown, unreadable, missing, startedAt, clock.GetUtcNow());
         Log.ScanFinished(logger, report.Trigger, report.Added, report.AlreadyKnown, report.Unreadable, report.Missing,
             (report.FinishedAt - report.StartedAt).TotalSeconds);
+        metrics.ScanEnded("completed", report.Added);
         return report;
     }
 

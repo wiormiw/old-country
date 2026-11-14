@@ -1,0 +1,35 @@
+# Prometheus: metrics arrive over OTLP from Alloy (the API) and over remote write from Tempo
+# (span metrics). It also scrapes the stack itself, so you can see if a part of it fails.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+otlp:
+  # These resource attributes become labels on each series. service.name becomes the job label.
+  promote_resource_attributes:
+    - service.name
+    - service.instance.id
+    - service.version
+    - deployment.environment.name
+
+storage:
+  tsdb:
+    # OTLP batches can arrive a little late. Accept samples up to 30 minutes old.
+    out_of_order_time_window: 30m
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]
+  - job_name: alloy
+    static_configs:
+      - targets: [alloy:12345]
+  - job_name: loki
+    static_configs:
+      - targets: [loki:3100]
+  - job_name: tempo
+    static_configs:
+      - targets: [tempo:3200]
+  - job_name: grafana
+    static_configs:
+      - targets: [grafana:3000]

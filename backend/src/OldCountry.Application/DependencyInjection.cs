@@ -1,5 +1,6 @@
 using OldCountry.Application.Announcements;
 using OldCountry.Application.Common.Library;
+using OldCountry.Application.Common.Telemetry;
 using OldCountry.Application.Common.YouTube;
 using OldCountry.Application.Downloads;
 using OldCountry.Application.Events;
@@ -16,6 +17,8 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddDomainEvents();
+        // The metrics of old-country (see AppMetrics). The host adds the meter factory.
+        services.AddSingleton<AppMetrics>();
         // The queue of change notices between the database and the SignalR hub.
         services.AddSingleton<ChangeFeed>();
 

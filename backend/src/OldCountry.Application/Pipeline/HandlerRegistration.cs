@@ -1,5 +1,6 @@
 using OldCountry.Application.Abstractions.Messaging;
 using OldCountry.Application.Abstractions.Persistence;
+using OldCountry.Application.Common.Telemetry;
 
 namespace OldCountry.Application.Pipeline;
 
@@ -21,7 +22,8 @@ internal static class HandlerRegistration
                 new TransactionDecorator.CommandHandler<TCommand, TResult>(
                     provider.GetRequiredService<THandler>(),
                     provider.GetRequiredService<IAppDbContext>()),
-                provider.GetRequiredService<ILoggerFactory>()));
+                provider.GetRequiredService<ILoggerFactory>(),
+                provider.GetRequiredService<AppMetrics>()));
         return services;
     }
 
@@ -34,7 +36,8 @@ internal static class HandlerRegistration
         services.AddScoped<IQueryHandler<TQuery, TResult>>(provider =>
             new LoggingDecorator.QueryHandler<TQuery, TResult>(
                 provider.GetRequiredService<THandler>(),
-                provider.GetRequiredService<ILoggerFactory>()));
+                provider.GetRequiredService<ILoggerFactory>(),
+                provider.GetRequiredService<AppMetrics>()));
         return services;
     }
 }

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OldCountry.Application.Abstractions.Messaging;
 using OldCountry.Application.Abstractions.Persistence;
+using OldCountry.Application.Common.Telemetry;
 using OldCountry.Application.Common.YouTube;
 using OldCountry.Application.Downloads.DownloadTrack;
 using OldCountry.Domain.Downloads;
@@ -20,6 +21,7 @@ internal sealed partial class ProcessNextDownloadHandler(
     YouTubeRateLimit rateLimit,
     TimeProvider clock,
     IOptions<YouTubeMusicOptions> options,
+    AppMetrics metrics,
     ILogger<ProcessNextDownloadHandler> logger) : ICommandHandler<ProcessNextDownloadCommand, ProcessNextDownloadResult>
 {
     /// <summary>Finished jobs are deleted after this time.</summary>
@@ -71,6 +73,7 @@ internal sealed partial class ProcessNextDownloadHandler(
             if (started) return job;
             // The job started too often without an end. It failed in Start. Take the next job.
             Log.GaveUp(logger, job.VideoId.Value);
+            metrics.DownloadEnded("failed", "download.gave_up");
         }
     }
 
@@ -100,21 +103,27 @@ internal sealed partial class ProcessNextDownloadHandler(
             case TrackId trackId:
                 rateLimit.Succeeded();
                 await FinishAsync(job.Id, j => j.Complete(trackId, now), cancellationToken);
+                metrics.DownloadEnded("completed", null);
                 break;
             case ExternalServiceError { Code: YouTubeRefusals.RateLimited } limited:
                 var until = rateLimit.RateLimited(now, options.Value.RateLimitPause, limited.Message);
                 Log.RateLimited(logger, until, limited.Message);
                 await FinishAsync(job.Id, j => j.Postpone(), cancellationToken);
+                metrics.RateLimited("downloads");
+                metrics.DownloadEnded("postponed", limited.Code);
                 break;
             case ExternalServiceError failed:
                 await FinishAsync(job.Id, j => j.Fail(failed.Code, failed.Message, now), cancellationToken);
+                metrics.DownloadEnded("failed", failed.Code);
                 break;
             case ValidationError invalid:
                 await FinishAsync(job.Id, j => j.Fail("download.invalid", string.Join(" ", invalid.Errors.Values.SelectMany(m => m)), now), cancellationToken);
+                metrics.DownloadEnded("failed", "download.invalid");
                 break;
             default:
                 // The handler threw an exception.
                 await FinishAsync(job.Id, j => j.Fail("download.crashed", "The download failed unexpectedly; see the server log.", now), cancellationToken);
+                metrics.DownloadEnded("failed", "download.crashed");
                 break;
         }
     }

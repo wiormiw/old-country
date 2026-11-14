@@ -1,0 +1,184 @@
+# Alert rules for old-country. Grafana evaluates them each minute.
+# They show in Grafana (Alerting > Alert rules). To get them on your phone, add a contact point
+# in Grafana (Discord, Telegram, ntfy, email...) and set it in the default notification policy.
+#
+# Each rule: query A (Prometheus), then C, a threshold on A. The rule fires when C is true for "for".
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: old-country
+    folder: old-country
+    interval: 1m
+    rules:
+      - uid: oc-api-silent
+        title: API stopped reporting
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: The API sent no metrics for 5 minutes. It is down, or it cannot reach Alloy.
+          description: Check `docker compose ps` and `docker compose logs api` on the server.
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              refId: A
+              instant: true
+              expr: absent_over_time(target_info{job="old-country-api"}[5m])
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+
+      - uid: oc-api-errors
+        title: API server errors above 5 %
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 5 % of the requests in the last 10 minutes ended with a 5xx status.
+          description: Open the old-country dashboard, then the logs panel "Warnings and errors".
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                sum(rate(http_server_request_duration_seconds_count{job="old-country-api",http_response_status_code=~"5.."}[10m]))
+                / clamp_min(sum(rate(http_server_request_duration_seconds_count{job="old-country-api"}[10m])), 1e-9)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
+
+      - uid: oc-use-case-failures
+        title: Use cases failed with an exception
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $values.A }} use cases failed with an exception in the last 15 minutes. This is a bug, not user input."
+          description: In Loki, filter the logs with detected_level="error". Each error has a trace_id that opens its trace.
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 900, to: 0 }
+            model:
+              refId: A
+              instant: true
+              expr: sum(increase(oldcountry_use_case_duration_seconds_count{job="old-country-api",outcome="failed"}[15m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.5] }
+
+      - uid: oc-downloads-failing
+        title: Downloads fail
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $values.A }} downloads failed in the last hour for a reason that is not the video (yt-dlp, network, server)."
+          description: Refusals by YouTube (Premium only, private, removed, age, region) do not count. Often a new yt-dlp release fixes it (YTDLP_VERSION in .env).
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 3600, to: 0 }
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                sum(increase(oldcountry_downloads_total{job="old-country-api",outcome="failed",
+                error_code!~"youtube\\.(premium_only|private|unavailable|age_restricted|region_blocked)"}[1h]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [3] }
+
+      - uid: oc-youtube-rate-limited
+        title: YouTube limits the rate
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: info
+        annotations:
+          summary: YouTube asked the server to slow down in the last hour. Downloads and syncs rest, then continue.
+          description: If it occurs often, increase YouTubeMusic:DownloadPause, or add cookies of a signed-in account.
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 3600, to: 0 }
+            model:
+              refId: A
+              instant: true
+              expr: sum(increase(oldcountry_youtube_rate_limits_total{job="old-country-api"}[1h]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.5] }
+
+      - uid: oc-stack-down
+        title: A part of the observability stack is down
+        condition: C
+        for: 5m
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: Prometheus cannot scrape Alloy, Loki or Tempo. Logs, traces or metrics are lost while it continues.
+          description: Check `docker compose --profile observability ps` on the server.
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              refId: A
+              instant: true
+              expr: min(up{job=~"alloy|loki|tempo"})
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }

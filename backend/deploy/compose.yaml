@@ -1,11 +1,17 @@
-# old-country on a server: PostgreSQL + the API, and optionally the Aspire dashboard for logs and traces.
+# old-country on a server: PostgreSQL and the API. Optional: the observability stack
+# (Grafana, Prometheus, Loki, Tempo, Alloy), or the Aspire dashboard.
 #
 #   cd backend/deploy
 #   cp .env.example .env            # then edit it: password, music folder
 #   docker compose up -d --build    # API on http://<server>:5000
 #   docker compose logs -f api
 #
-# With the dashboard:  set OTEL_EXPORTER_OTLP_ENDPOINT in .env, then
+# With the observability stack (logs, traces and metrics on disk, dashboards and alerts):
+#   in .env set OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317 and GRAFANA_ADMIN_PASSWORD, then
+#   docker compose --profile observability up -d      # Grafana on http://<server>:3000
+#
+# With the Aspire dashboard instead (in memory only, for a quick look):
+#   in .env set OTEL_EXPORTER_OTLP_ENDPOINT=http://dashboard:18889, then
 #   docker compose --profile dashboard up -d
 #   docker compose logs dashboard | grep login    # the sign-in link (token) for http://<server>:18888
 
@@ -58,20 +64,103 @@ services:
       Library__Roots__0: /music
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}   # empty: telemetry off
       OTEL_SERVICE_NAME: old-country-api
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=${DEPLOYMENT_ENVIRONMENT:-production}
     volumes:
       - ${MUSIC_DIR:?Set MUSIC_DIR in .env}:/music
 
-  # Aspire's dashboard on its own: the same logs, traces and metrics view as in development.
+  # The Aspire dashboard by itself: the same view of logs, traces and metrics as in development.
   dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:13.6
     logging: *logging
     profiles: [dashboard]
     restart: unless-stopped
     ports:
-      - "${DASHBOARD_PORT:-18888}:18888"   # the UI; sign in with the link from its logs
+      - "${DASHBOARD_PORT:-18888}:18888"   # The UI. Sign in with the link from its logs.
     environment:
-      # Telemetry arrives on port 18889, which isn't published: only containers on this network can send.
+      # Telemetry arrives on port 18889. That port is not published: only containers on this network can send.
       DASHBOARD__OTLP__AUTHMODE: Unsecured
+
+  # --- Observability (profile "observability") ---
+  # Only Grafana has a published port. The other parts talk on this compose network.
+
+  alloy:
+    image: grafana/alloy:v1.22.0
+    profiles: [observability]
+    logging: *logging
+    restart: unless-stopped
+    command: [run, /etc/alloy/config.alloy, --server.http.listen-addr=0.0.0.0:12345, --storage.path=/var/lib/alloy/data]
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    depends_on: [loki, tempo, prometheus]
+
+  loki:
+    image: grafana/loki:3.7.10
+    profiles: [observability]
+    logging: *logging
+    restart: unless-stopped
+    command: [-config.file=/etc/loki/loki.yaml, -config.expand-env=true]
+    environment:
+      LOKI_RETENTION: ${LOKI_RETENTION:-720h}
+    volumes:
+      - ./observability/loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+
+  tempo:
+    # The 2.x line: Tempo 3 changed the format of the configuration.
+    image: grafana/tempo:2.10.10
+    profiles: [observability]
+    logging: *logging
+    restart: unless-stopped
+    command: [-config.file=/etc/tempo/tempo.yaml, -config.expand-env=true]
+    environment:
+      TEMPO_RETENTION: ${TEMPO_RETENTION:-168h}
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    depends_on: [prometheus]
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    profiles: [observability]
+    logging: *logging
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+      - --web.enable-otlp-receiver          # Metrics from Alloy.
+      - --web.enable-remote-write-receiver  # Span metrics from Tempo.
+      - --enable-feature=exemplar-storage   # Links from a metric point to its trace.
+    volumes:
+      - ./observability/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:13.3.1
+    profiles: [observability]
+    logging: *logging
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on: [prometheus, loki, tempo]
 
 volumes:
   pgdata:
+  alloy-data:
+  loki-data:
+  tempo-data:
+  prometheus-data:
+  grafana-data:

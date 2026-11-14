@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OldCountry.Application.Abstractions.Messaging;
 using OldCountry.Application.Abstractions.Persistence;
+using OldCountry.Application.Common.Telemetry;
 using OldCountry.Application.Common.YouTube;
 using OldCountry.Application.YouTubeMusic.ImportPlaylist;
 using OldCountry.Application.YouTubeMusic.SyncPlaylist;
@@ -22,6 +23,7 @@ internal sealed partial class SyncDuePlaylistsHandler(
     YouTubeRateLimit rateLimit,
     TimeProvider clock,
     IOptions<YouTubeMusicOptions> options,
+    AppMetrics metrics,
     ILogger<SyncDuePlaylistsHandler> logger) : ICommandHandler<SyncDuePlaylistsCommand, int>
 {
     public async Task<int> Handle(SyncDuePlaylistsCommand command, CancellationToken cancellationToken)
@@ -55,15 +57,18 @@ internal sealed partial class SyncDuePlaylistsHandler(
                     case ImportPlaylistReport report:
                         synced++;
                         state.FailedAt.Remove(id);
+                        metrics.PlaylistSynced("synced");
                         if (report.Added > 0) Log.Added(logger, report.Name, report.Added);
                         break;
                     case ExternalServiceError { Code: YouTubeRefusals.RateLimited } limited:
                         var until = rateLimit.RateLimited(clock.GetUtcNow(), options.Value.RateLimitPause, limited.Message);
                         Log.RateLimited(logger, until);
+                        metrics.RateLimited("playlist_sync");
                         return synced;
                     case ExternalServiceError failed:
                         state.FailedAt[id] = clock.GetUtcNow();
                         Log.SyncFailed(logger, id.Value, failed.Message);
+                        metrics.PlaylistSynced("failed");
                         break;
                     case ValidationError:
                         // For example, liked songs without cookies. Nothing changes until the settings change.

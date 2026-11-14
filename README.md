@@ -131,8 +131,8 @@ Bad configuration stops the server at startup with a message naming the setting.
 
 Aspire's AppHost is a development tool: it starts Postgres and the API on your machine and shows
 the dashboard. On a server, `backend/deploy/` runs the same pieces with Docker Compose. That means
-PostgreSQL 18, the API image (with yt-dlp, Node.js and ffmpeg built in), and optionally Aspire's
-dashboard on its own.
+PostgreSQL 18, the API image (with yt-dlp, Node.js and ffmpeg built in), and optionally the
+observability stack (Grafana, Prometheus, Loki, Tempo, Alloy) or Aspire's dashboard on its own.
 
 ```bash
 # On the server (Docker with the compose plugin installed)
@@ -146,9 +146,40 @@ docker compose logs -f api
 |---|---|
 | Update after `git pull` | `docker compose up -d --build` (migrations run on start) |
 | Update yt-dlp | bump `YTDLP_VERSION` in `.env`, then `docker compose up -d --build` |
-| Logs and traces | set `OTEL_EXPORTER_OTLP_ENDPOINT=http://dashboard:18889` in `.env`, run `docker compose --profile dashboard up -d`, then open `http://<server>:18888` with the link from `docker compose logs dashboard` |
+| Logs, traces, metrics, alerts | set `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317` and `GRAFANA_ADMIN_PASSWORD` in `.env`, run `docker compose --profile observability up -d`, then open Grafana at `http://<server>:3000` (see [Observability](#observability)) |
+| A quick look without storage | set `OTEL_EXPORTER_OTLP_ENDPOINT=http://dashboard:18889`, run `docker compose --profile dashboard up -d`, then open `http://<server>:18888` with the link from `docker compose logs dashboard` |
 | Liked songs, private playlists | put `cookies.txt` here, `cp compose.override.example.yaml compose.override.yaml`, `docker compose up -d` |
 | Back up the database | `docker compose exec postgres pg_dump -U postgres oldcountry > backup.sql` |
+
+### Observability
+
+The `observability` profile runs the Grafana LGTM stack next to the API, with everything kept on disk:
+
+```
+API ─OTLP─▶ Alloy ─┬─ traces ──▶ Tempo (7 days) ──── span metrics ─┐
+                   ├─ logs ────▶ Loki (30 days)                    ▼
+                   └─ metrics ─▶ Prometheus (30 days) ◀────────────┘
+                                         ▲ Grafana reads all three, links them, and runs the alerts
+```
+
+- **Grafana** (`http://<server>:3000`, user `admin`) comes provisioned: the three data sources,
+  linked (a trace opens its logs, a log line opens its trace, a slow point on a latency chart
+  opens the trace behind it), the **old-country** dashboard, and the alert rules. Only Grafana
+  has a published port; Alloy, Loki, Tempo and Prometheus are reachable only on the compose network.
+- **The dashboard** shows requests, errors and latency by route, each use case's duration and its
+  refusals or failures, downloads by outcome, YouTube rate limits, scans and syncs, database
+  queries and connections, connected apps, the .NET runtime, and the warning and error logs.
+- **App metrics** come from `AppMetrics` (meter `OldCountry.Application`): `oldcountry.use_case.duration`,
+  `oldcountry.downloads`, `oldcountry.youtube.rate_limits`, `oldcountry.library.scans`,
+  `oldcountry.library.tracks_added`, `oldcountry.playlist_syncs`. The rest come from ASP.NET Core,
+  SignalR, Npgsql and the runtime.
+- **Alerts**: the API stopped reporting, 5xx above 5 %, a use case failed with an exception,
+  downloads failing for a reason that isn't the video, YouTube rate limiting, and a part of the
+  stack down. They show under Alerting in Grafana; to receive them, add a contact point there
+  (Discord, Telegram, ntfy, email, ...) and set it on the default notification policy.
+- **Retention** is set in `.env` (`PROMETHEUS_RETENTION`, `LOKI_RETENTION`, `TEMPO_RETENTION`).
+- **Configuration** is in `backend/deploy/observability/`. Dashboards and alert rules are
+  provisioned from files, so edit the files (not the UI) and restart Grafana to change them.
 
 The database has no published port, so only the API can reach it. The API itself has no
 authentication: keep it on your LAN or behind a VPN, not open to the internet.

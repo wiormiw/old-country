@@ -22,3 +22,5 @@ dist/
 
 # Tauri generated schemas
 desktop/src-tauri/gen/
+
+docs/superpowers/

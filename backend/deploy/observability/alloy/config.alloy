@@ -1,0 +1,64 @@
+// Grafana Alloy: the one OTLP endpoint of the API. It receives logs, traces and metrics,
+// and sends each signal to the backend that stores it:
+//   traces  -> Tempo       (OTLP gRPC)
+//   logs    -> Loki        (OTLP HTTP, /otlp)
+//   metrics -> Prometheus  (OTLP HTTP, the native receiver of Prometheus 3)
+
+otelcol.receiver.otlp "api" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    metrics = [otelcol.processor.memory_limiter.default.input]
+    logs    = [otelcol.processor.memory_limiter.default.input]
+    traces  = [otelcol.processor.memory_limiter.default.input]
+  }
+}
+
+// Refuse new data when Alloy uses too much memory, so a burst cannot stop the container.
+otelcol.processor.memory_limiter "default" {
+  check_interval = "1s"
+  limit          = "400MiB"
+
+  output {
+    metrics = [otelcol.processor.batch.default.input]
+    logs    = [otelcol.processor.batch.default.input]
+    traces  = [otelcol.processor.batch.default.input]
+  }
+}
+
+// Send in batches: fewer requests to the backends.
+otelcol.processor.batch "default" {
+  output {
+    metrics = [otelcol.exporter.otlphttp.prometheus.input]
+    logs    = [otelcol.exporter.otlphttp.loki.input]
+    traces  = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+
+    tls {
+      insecure = true
+    }
+  }
+}
+
+otelcol.exporter.otlphttp "loki" {
+  client {
+    endpoint = "http://loki:3100/otlp"
+  }
+}
+
+otelcol.exporter.otlphttp "prometheus" {
+  client {
+    endpoint = "http://prometheus:9090/api/v1/otlp"
+  }
+}
