@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use shared::{PlayerState, QueueItem, RepeatMode};
+use shared::{PlayerState, QueueItem, QueueView, RepeatMode};
 
 use super::cache::AudioCache;
 use super::decoder::Decoder;
@@ -66,6 +66,9 @@ pub struct StartSettings {
 pub struct PlayerHandle {
     commands: Sender<Command>,
     state: Arc<Mutex<PlayerState>>,
+    /// The queue as of `PlayerState::queue_revision`. The engine replaces it only when the
+    /// revision changes, so a read does not clone the queue on the player thread.
+    queue: Arc<Mutex<Arc<QueueView>>>,
     /// Counts the sessions handed out.
     sessions: Arc<AtomicU64>,
     /// The session of the last `Play` the engine accepted.
@@ -100,6 +103,7 @@ impl PlayerHandle {
         let mut queue = Queue::default();
         queue.set_shuffle(start.shuffle);
         queue.set_repeat(start.repeat);
+        let view = Arc::new(Mutex::new(Arc::new(queue_view(&queue))));
         let sessions = Arc::new(AtomicU64::new(0));
         let session = Arc::new(AtomicU64::new(0));
         let engine = Engine {
@@ -108,6 +112,7 @@ impl PlayerHandle {
             cache,
             server,
             published: Arc::clone(&state),
+            published_queue: Arc::clone(&view),
             queue,
             generation: 0,
             sessions: Arc::clone(&sessions),
@@ -125,7 +130,7 @@ impl PlayerHandle {
             .name("player".into())
             .spawn(move || engine.run(emit))
             .expect("spawn the player thread");
-        Self { commands, state, sessions, session }
+        Self { commands, state, queue: view, sessions, session }
     }
 
     pub fn send(&self, command: Command) {
@@ -147,6 +152,23 @@ impl PlayerHandle {
     pub fn state(&self) -> PlayerState {
         self.state.lock().expect("player state lock").clone()
     }
+
+    /// The full queue. The cursor moves without a new revision, so the index comes from the
+    /// last state when that state has the same revision.
+    pub fn queue(&self) -> QueueView {
+        let view = Arc::clone(&self.queue.lock().expect("player queue lock"));
+        let (index, revision) = {
+            let state = self.state.lock().expect("player state lock");
+            (state.index, state.queue_revision)
+        };
+        let index = if revision == view.revision { index } else { view.index };
+        QueueView { index, ..QueueView::clone(&view) }
+    }
+}
+
+/// A copy of the queue for the UI.
+fn queue_view(queue: &Queue) -> QueueView {
+    QueueView { items: queue.items().to_vec(), order: queue.order().to_vec(), index: queue.index(), revision: queue.revision() }
 }
 
 struct Engine {
@@ -155,6 +177,7 @@ struct Engine {
     cache: Arc<AudioCache>,
     server: ServerUrl,
     published: Arc<Mutex<PlayerState>>,
+    published_queue: Arc<Mutex<Arc<QueueView>>>,
     queue: Queue,
     generation: u64,
     sessions: Arc<AtomicU64>,
@@ -199,6 +222,12 @@ impl Engine {
                 self.start(&mut output);
             }
             let state = self.snapshot(&output);
+            // Publish the queue before the state that names its revision. Then a UI that sees
+            // the new revision gets the new queue.
+            if state.queue_revision != last.queue_revision {
+                let view = Arc::new(queue_view(&self.queue));
+                *self.published_queue.lock().expect("player queue lock") = view;
+            }
             if state != last {
                 *self.published.lock().expect("player state lock") = state.clone();
                 emit(&state);
@@ -385,9 +414,10 @@ impl Engine {
     fn snapshot(&self, output: &Output) -> PlayerState {
         let position = if self.loaded { output.player.get_pos().as_secs_f64() } else { 0.0 };
         PlayerState {
-            queue: self.queue.items().to_vec(),
+            current_item: self.queue.current().cloned(),
             index: self.queue.index(),
-            order: self.queue.order().to_vec(),
+            queue_len: self.queue.items().len(),
+            queue_revision: self.queue.revision(),
             shuffle: self.queue.shuffle(),
             repeat: self.queue.repeat(),
             playing: self.want_playing && self.loaded,
@@ -413,6 +443,27 @@ mod tests {
         assert!(!accepts(2, 1));
         // After Stop the engine takes a new number, so no earlier session matches.
         assert!(!accepts(3, 2));
+    }
+
+    #[test]
+    fn the_queue_view_has_the_items_order_and_revision() {
+        let items: Vec<QueueItem> = (0..3)
+            .map(|n| QueueItem {
+                audio: shared::AudioRef::Track { id: n.to_string() },
+                title: format!("Song {n}"),
+                artist: "Band".into(),
+                duration: None,
+                video_id: None,
+            })
+            .collect();
+        let mut queue = Queue::default();
+        queue.replace(items.clone(), 1);
+        let view = queue_view(&queue);
+        assert_eq!(view.items, items);
+        assert_eq!(view.order, vec![0, 1, 2]);
+        assert_eq!(view.index, Some(1));
+        assert_eq!(view.revision, queue.revision());
+        assert_ne!(view.revision, 0);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 use leptos_router::components::A;
-use shared::{AppError, RepeatMode, Theme};
+use shared::{AppError, QueueView, RepeatMode, Theme};
 use shared::timespan::display;
 
 use crate::ipc;
@@ -311,7 +311,7 @@ pub fn NowPlaying() -> impl IntoView {
                 />
                 <button class="ghost" class:active=move || show_queue.get() && !closing_queue.get()
                     on:click=move |_| if show_queue.get_untracked() { close_queue() } else { show_queue.set(true) }>
-                    {move || format!("Queue ({})", player.with(|s| s.queue.len()))}
+                    {move || format!("Queue ({})", player.with(|s| s.queue_len))}
                 </button>
             </div>
         </footer>
@@ -321,15 +321,48 @@ pub fn NowPlaying() -> impl IntoView {
     }
 }
 
+/// Rows the drawer shows before the current song.
+const DRAWER_BEFORE: usize = 20;
+/// Rows the drawer shows after the current song.
+const DRAWER_AFTER: usize = 200;
+
+/// The positions in the play order that the drawer shows. A queue can have 20,000 songs, so the
+/// drawer shows only the songs near the current one.
+pub fn drawer_window(order_len: usize, current_at: Option<usize>) -> std::ops::Range<usize> {
+    let at = current_at.unwrap_or(0);
+    let start = at.saturating_sub(DRAWER_BEFORE).min(order_len);
+    let end = at.saturating_add(DRAWER_AFTER).min(order_len);
+    start..end
+}
+
 #[component]
 fn QueueDrawer(closing: RwSignal<bool>, on_close: impl Fn() + 'static + Copy) -> impl IntoView {
-    // Open at the song playing now, not at the top of a long queue.
-    request_animation_frame(|| {
-        if let Ok(Some(current)) = document().query_selector(".queue li.current") {
-            current.scroll_into_view_with_bool(false);
-        }
-    });
     let player = use_player().0;
+    // The state ticks do not carry the queue. Get it when the drawer opens and when the queue
+    // changes while it is open.
+    let queue = RwSignal::new(None::<QueueView>);
+    let revision = Memo::new(move |_| player.with(|s| s.queue_revision));
+    let index = Memo::new(move |_| player.with(|s| s.index));
+    Effect::new(move |_| {
+        revision.track();
+        leptos::task::spawn_local(async move {
+            let Ok(view) = ipc::player_queue().await else { return };
+            // A slow reply must not replace a newer queue.
+            if queue.with_untracked(|q| q.as_ref().is_some_and(|q| q.revision > view.revision)) {
+                return;
+            }
+            let first = queue.with_untracked(Option::is_none);
+            queue.set(Some(view));
+            if first {
+                // Open at the song playing now, not at the top of a long queue.
+                request_animation_frame(|| {
+                    if let Ok(Some(current)) = document().query_selector(".queue li.current") {
+                        current.scroll_into_view_with_bool(false);
+                    }
+                });
+            }
+        });
+    });
     view! {
         <aside class="drawer" class:closing=move || closing.get() aria-label="Play queue">
             <header class="drawer-head">
@@ -337,35 +370,42 @@ fn QueueDrawer(closing: RwSignal<bool>, on_close: impl Fn() + 'static + Copy) ->
                 <button class="icon" aria-label="Close" on:click=move |_| on_close()>"✕"</button>
             </header>
             {move || {
-                let state = player.get();
-                if state.queue.is_empty() {
-                    return view! { <p class="muted">"The queue is empty. Play something from the library."</p> }.into_any();
-                }
-                // In play order (shuffled when shuffle is on); songs before the current one have
-                // been heard this cycle.
-                let current_at = state.index.and_then(|i| state.order.iter().position(|&o| o == i));
-                view! {
-                    <ol class="queue">
-                        {state.order.iter().enumerate().map(|(at, &i)| {
-                            let item = state.queue[i].clone();
-                            let current = state.index == Some(i);
-                            let heard = current_at.is_some_and(|c| at < c);
-                            view! {
-                                <li class:current=current class:heard=heard>
-                                    <button class="queue-item" on:click=move |_| leptos::task::spawn_local(ipc::jump(i))>
-                                        <Art video_id=item.video_id />
-                                        <span class="q-text">
-                                            <span class="q-title">{item.title}</span>
-                                            <span class="q-artist">{item.artist}</span>
-                                        </span>
-                                    </button>
-                                    <button class="icon" aria-label="Remove from queue"
-                                        on:click=move |_| leptos::task::spawn_local(ipc::remove_from_queue(i))>"✕"</button>
-                                </li>
-                            }
-                        }).collect_view()}
-                    </ol>
-                }.into_any()
+                let index = index.get();
+                queue.with(|view| {
+                    let Some(view) = view else { return ().into_any() };
+                    if view.items.is_empty() {
+                        return view! { <p class="muted">"The queue is empty. Play something from the library."</p> }.into_any();
+                    }
+                    // In play order (shuffled when shuffle is on); songs before the current one
+                    // have been heard this cycle.
+                    let current_at = index.and_then(|i| view.order.iter().position(|&o| o == i));
+                    let window = drawer_window(view.order.len(), current_at);
+                    let before = window.start;
+                    let after = view.order.len() - window.end;
+                    let rows = view.order[window.clone()].iter().zip(window).filter_map(|(&i, at)| {
+                        let item = view.items.get(i)?.clone();
+                        let current = index == Some(i);
+                        let heard = current_at.is_some_and(|c| at < c);
+                        Some(view! {
+                            <li class:current=current class:heard=heard>
+                                <button class="queue-item" on:click=move |_| leptos::task::spawn_local(ipc::jump(i))>
+                                    <Art video_id=item.video_id />
+                                    <span class="q-text">
+                                        <span class="q-title">{item.title}</span>
+                                        <span class="q-artist">{item.artist}</span>
+                                    </span>
+                                </button>
+                                <button class="icon" aria-label="Remove from queue"
+                                    on:click=move |_| leptos::task::spawn_local(ipc::remove_from_queue(i))>"✕"</button>
+                            </li>
+                        })
+                    }).collect_view();
+                    view! {
+                        {(before > 0).then(|| view! { <p class="muted">{format!("… and {before} more")}</p> })}
+                        <ol class="queue">{rows}</ol>
+                        {(after > 0).then(|| view! { <p class="muted">{format!("… and {after} more")}</p> })}
+                    }.into_any()
+                })
             }}
         </aside>
     }
@@ -432,5 +472,17 @@ pub fn PlaylistPicker() -> impl IntoView {
                 </div>
             </div>
         </Show>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::drawer_window;
+
+    #[test]
+    fn drawer_window_is_bounded() {
+        assert_eq!(drawer_window(20_000, Some(10_000)), 9_980..10_200);
+        assert_eq!(drawer_window(5, None), 0..5);
+        assert_eq!(drawer_window(20_000, Some(3)), 0..203);
     }
 }

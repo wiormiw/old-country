@@ -177,6 +177,7 @@ pub fn run() {
             commands::sync_playlist,
             commands::youtube_import,
             commands::player_state,
+            commands::player_queue,
             commands::player_play,
             commands::player_enqueue,
             commands::player_jump,

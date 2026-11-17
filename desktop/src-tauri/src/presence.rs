@@ -260,9 +260,9 @@ mod tests {
             video_id: video_id.map(str::to_owned),
         };
         PlayerState {
-            queue: vec![item],
+            current_item: Some(item),
             index: Some(0),
-            order: vec![0],
+            queue_len: 1,
             playing: true,
             position: 30.0,
             duration: Some(200.0),
@@ -305,7 +305,7 @@ mod tests {
     fn a_track_without_a_duration_has_no_end() {
         let mut state = playing(None, None);
         state.duration = None;
-        state.queue[0].duration = None;
+        state.current_item.as_mut().unwrap().duration = None;
         assert_eq!(card_for(&state, NOW).expect("a card").end_ms, None);
     }
 
@@ -322,12 +322,12 @@ mod tests {
     #[test]
     fn text_fits_the_limits_of_discord() {
         let mut state = playing(None, None);
-        state.queue[0].title = "x".repeat(300);
-        state.queue[0].artist = "A".to_owned();
+        state.current_item.as_mut().unwrap().title = "x".repeat(300);
+        state.current_item.as_mut().unwrap().artist = "A".to_owned();
         let card = card_for(&state, NOW).expect("a card");
         assert_eq!(card.details.chars().count(), 128);
         assert_eq!(card.state.chars().count(), 2);
-        state.queue[0].artist = "  ".to_owned();
+        state.current_item.as_mut().unwrap().artist = "  ".to_owned();
         assert_eq!(card_for(&state, NOW).expect("a card").state, "Unknown artist");
     }
 

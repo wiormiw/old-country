@@ -4,7 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use shared::{
-    AppError, DownloadStatus, Downloads, ImportReport, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, RepeatMode,
+    AppError, DownloadStatus, Downloads, ImportReport, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, QueueView, RepeatMode,
     LiveStatus, ScanStatus, Settings, Theme, Track, TrackDetail, YouTubeResult,
 };
 use tauri::{AppHandle, Manager, State};
@@ -201,6 +201,12 @@ pub async fn youtube_import(state: State<'_, AppState>, playlist: String) -> Rep
 #[tauri::command]
 pub fn player_state(state: State<'_, AppState>) -> PlayerState {
     state.player.state()
+}
+
+/// The full queue. The UI asks for it when `queue_revision` changes.
+#[tauri::command]
+pub fn player_queue(state: State<'_, AppState>) -> QueueView {
+    state.player.queue()
 }
 
 #[tauri::command]

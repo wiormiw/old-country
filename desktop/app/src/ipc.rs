@@ -4,7 +4,7 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use shared::{
-    Announcement, AppError, DownloadStatus, Downloads, ImportReport, LibraryChanges, LiveStatus, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, RepeatMode,
+    Announcement, AppError, DownloadStatus, Downloads, ImportReport, LibraryChanges, LiveStatus, Paged, PlayerState, Playlist, PlaylistDownloadReport, PlaylistSummary, QueueItem, QueueView, RepeatMode,
     ScanStatus, Settings, Theme, Track, TrackDetail, YouTubeResult,
 };
 use wasm_bindgen::prelude::*;
@@ -195,6 +195,11 @@ pub async fn youtube_import(playlist: String) -> Result<ImportReport, AppError> 
 
 pub async fn player_state() -> Result<PlayerState, AppError> {
     call("player_state", NoArgs {}).await
+}
+
+/// The full queue. Ask for it again when `PlayerState::queue_revision` changes.
+pub async fn player_queue() -> Result<QueueView, AppError> {
+    call("player_queue", NoArgs {}).await
 }
 
 /// `context`: the playlist name when the queue is a playlist (Discord shows it), else `None`.

@@ -194,14 +194,19 @@ pub fn thumbnail_url(video_id: &str) -> String {
 }
 
 /// Everything the UI needs to draw the player. The core is the only source of truth.
+/// The core sends it about 4 times a second, so it does not carry the queue. Get the queue with
+/// the `player_queue` command when `queue_revision` changes.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerState {
-    pub queue: Vec<QueueItem>,
-    /// Index into `queue` of the current item.
+    /// The item at `index`.
+    pub current_item: Option<QueueItem>,
+    /// Index into the queue's items of the current item.
     pub index: Option<usize>,
-    /// Indices into `queue` in the order they play (shuffled when `shuffle` is on).
-    pub order: Vec<usize>,
+    /// The number of items in the queue.
+    pub queue_len: usize,
+    /// Rises on each change of the queue's items or order.
+    pub queue_revision: u64,
     pub shuffle: bool,
     pub repeat: RepeatMode,
     pub playing: bool,
@@ -220,8 +225,21 @@ pub struct PlayerState {
 
 impl PlayerState {
     pub fn current(&self) -> Option<&QueueItem> {
-        self.index.and_then(|i| self.queue.get(i))
+        self.current_item.as_ref()
     }
+}
+
+/// The full queue, from the `player_queue` command.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueView {
+    pub items: Vec<QueueItem>,
+    /// Indices into `items` in the order they play (shuffled when shuffle is on).
+    pub order: Vec<usize>,
+    /// Index into `items` of the current item.
+    pub index: Option<usize>,
+    /// The queue revision of this view (see `PlayerState::queue_revision`).
+    pub revision: u64,
 }
 
 /// The colour theme: the system's choice, or always light or dark.
@@ -404,6 +422,15 @@ mod tests {
     #[test]
     fn entry_without_file_or_video_is_unplayable() {
         assert_eq!(entry_queue_item(&entry(false, None)), None);
+    }
+
+    #[test]
+    fn state_ticks_do_not_carry_the_queue() {
+        let item = track_queue_item(&track(true, Some("v1"))).unwrap();
+        let state = PlayerState { current_item: Some(item), index: Some(9_999), queue_len: 20_000, queue_revision: 7, ..Default::default() };
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(json.len() < 2048, "a state tick is {} bytes", json.len());
+        assert_eq!(state.current().map(|i| i.title.as_str()), Some("Song"));
     }
 
     #[test]
