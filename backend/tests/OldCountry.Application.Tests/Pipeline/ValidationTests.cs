@@ -74,9 +74,13 @@ public sealed class ValidationTests
     [Theory]
     [InlineData(0, 50, "page")]
     [InlineData(1, 0, "pageSize")]
-    [InlineData(1, 201, "pageSize")]
+    [InlineData(1, 1001, "pageSize")]
     public void Paging_bounds_are_checked(int page, int pageSize, string key) =>
         Errors(new ListTracksRequestValidator(), new ListTracksRequest(page, pageSize)).ShouldContainKey(key);
+
+    [Fact]
+    public void A_page_of_1000_tracks_is_allowed() =>
+        Errors(new ListTracksRequestValidator(), new ListTracksRequest(1, 1000)).ShouldNotContainKey("pageSize");
 
     [Fact]
     public void Library_options_refuse_relative_roots_and_long_intervals()

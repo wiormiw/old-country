@@ -4,7 +4,7 @@ namespace OldCountry.Application.Tracks.ListTracks;
 
 internal sealed class ListTracksRequestValidator : AbstractValidator<ListTracksRequest>
 {
-    public const int MaxPageSize = 200;
+    public const int MaxPageSize = 1000;
 
     public ListTracksRequestValidator()
     {

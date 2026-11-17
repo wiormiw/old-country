@@ -113,11 +113,21 @@ public sealed class TracksEndpointTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task A_page_size_over_the_limit_is_a_400()
+    public async Task A_page_size_of_1000_is_accepted()
     {
         using var client = factory.CreateApiClient();
 
         var response = await client.GetAsync("/api/tracks?pageSize=1000", Ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_page_size_over_the_limit_is_a_400()
+    {
+        using var client = factory.CreateApiClient();
+
+        var response = await client.GetAsync("/api/tracks?pageSize=1001", Ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
