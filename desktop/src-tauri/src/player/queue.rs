@@ -109,8 +109,11 @@ impl Queue {
     }
 
     /// Adds items. Shuffled, they go to random places among the songs not heard yet this cycle.
-    /// An idle queue starts at the first added item.
+    /// An idle queue starts at the first added item. No items is not a change.
     pub fn enqueue(&mut self, items: Vec<QueueItem>) {
+        if items.is_empty() {
+            return;
+        }
         self.revision += 1;
         let first_new = self.items.len();
         let count = items.len();
@@ -124,7 +127,7 @@ impl Queue {
                 self.order.push(index);
             }
         }
-        if self.cursor.is_none() && count > 0 {
+        if self.cursor.is_none() {
             self.cursor = self.order.iter().position(|&i| i >= first_new);
         }
     }
@@ -541,6 +544,8 @@ mod tests {
         queue.set_repeat(RepeatMode::All);
         queue.replace(items(2), 1);
         let before = queue.revision();
+        queue.enqueue(Vec::new());
+        assert_eq!(queue.revision(), before, "adding no items is not a change");
         queue.advance(true);
         assert_eq!(queue.revision(), before, "moving the cursor is not a change");
         queue.advance(true); // past the end: a new cycle
