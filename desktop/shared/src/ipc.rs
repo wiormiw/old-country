@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::ProblemDetails;
+use crate::api::{PlaylistEntry, ProblemDetails, Track};
 
 /// Event the core emits whenever playback state changes, and a few times a second while playing.
 pub const PLAYER_STATE_EVENT: &str = "player://state";
@@ -148,6 +148,44 @@ pub struct QueueItem {
     /// The YouTube video the song came from, for its thumbnail.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_id: Option<String>,
+}
+
+/// Picks how a song plays: from the library file, from YouTube, or not at all.
+fn playable_audio(
+    track_id: &str,
+    is_available_offline: bool,
+    video_id: Option<&String>,
+) -> Option<AudioRef> {
+    match (video_id, is_available_offline) {
+        (_, true) => Some(AudioRef::Track { id: track_id.to_string() }),
+        (Some(video_id), false) => Some(AudioRef::YouTube { video_id: video_id.clone() }),
+        (None, false) => None,
+    }
+}
+
+/// A library track plays from its local file, or streams from YouTube when it only exists there.
+/// Returns `None` when it has neither, so it cannot play.
+pub fn track_queue_item(track: &Track) -> Option<QueueItem> {
+    let audio = playable_audio(&track.id, track.is_available_offline, track.you_tube_video_id.as_ref())?;
+    Some(QueueItem {
+        audio,
+        title: track.title.clone(),
+        artist: track.artist.clone(),
+        duration: Some(track.duration),
+        video_id: track.you_tube_video_id.clone(),
+    })
+}
+
+/// The same as [`track_queue_item`], for a playlist entry.
+pub fn entry_queue_item(entry: &PlaylistEntry) -> Option<QueueItem> {
+    let audio = playable_audio(&entry.track_id, entry.is_available_offline, entry.you_tube_video_id.as_ref())?;
+    Some(QueueItem {
+        audio,
+        title: entry.title.clone(),
+        artist: entry.artist.clone(),
+        duration: Some(entry.duration),
+        video_id: entry.you_tube_video_id.clone(),
+    })
 }
 
 /// A YouTube video's thumbnail. The 4:3 picture letterboxes 16:9 videos; crop it to show them.
@@ -303,6 +341,70 @@ impl std::error::Error for AppError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn track(offline: bool, video: Option<&str>) -> Track {
+        Track {
+            id: "t1".into(),
+            title: "Song".into(),
+            artist: "Band".into(),
+            duration: 90.0,
+            is_available_offline: offline,
+            codec: None,
+            you_tube_video_id: video.map(str::to_string),
+            created_at: String::new(),
+            download_problem: None,
+        }
+    }
+
+    fn entry(offline: bool, video: Option<&str>) -> PlaylistEntry {
+        PlaylistEntry {
+            position: 0,
+            track_id: "t1".into(),
+            title: "Song".into(),
+            artist: "Band".into(),
+            duration: 90.0,
+            is_available_offline: offline,
+            you_tube_video_id: video.map(str::to_string),
+            added_at: String::new(),
+            download_problem: None,
+        }
+    }
+
+    #[test]
+    fn offline_track_plays_from_the_library() {
+        let item = track_queue_item(&track(true, Some("v1"))).unwrap();
+        assert_eq!(item.audio, AudioRef::Track { id: "t1".into() });
+        assert_eq!(item.video_id.as_deref(), Some("v1"));
+        assert_eq!(item.duration, Some(90.0));
+    }
+
+    #[test]
+    fn youtube_only_track_streams() {
+        let item = track_queue_item(&track(false, Some("v1"))).unwrap();
+        assert_eq!(item.audio, AudioRef::YouTube { video_id: "v1".into() });
+    }
+
+    #[test]
+    fn track_without_file_or_video_is_unplayable() {
+        assert_eq!(track_queue_item(&track(false, None)), None);
+    }
+
+    #[test]
+    fn offline_entry_plays_from_the_library() {
+        let item = entry_queue_item(&entry(true, Some("v1"))).unwrap();
+        assert_eq!(item.audio, AudioRef::Track { id: "t1".into() });
+    }
+
+    #[test]
+    fn youtube_only_entry_streams() {
+        let item = entry_queue_item(&entry(false, Some("v1"))).unwrap();
+        assert_eq!(item.audio, AudioRef::YouTube { video_id: "v1".into() });
+    }
+
+    #[test]
+    fn entry_without_file_or_video_is_unplayable() {
+        assert_eq!(entry_queue_item(&entry(false, None)), None);
+    }
 
     #[test]
     fn audio_refs_map_to_server_paths_and_cache_keys() {

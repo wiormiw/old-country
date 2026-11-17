@@ -159,32 +159,25 @@ pub fn use_notice() -> Notice {
 // --- Building queue items ---
 
 /// A library track plays from its local file, or streams from YouTube when it only exists there.
+/// A track with neither still gets a library reference, so a row button behaves as before.
 pub fn track_item(track: &Track) -> QueueItem {
-    let audio = match (&track.you_tube_video_id, track.is_available_offline) {
-        (Some(video_id), false) => AudioRef::YouTube { video_id: video_id.clone() },
-        _ => AudioRef::Track { id: track.id.clone() },
-    };
-    QueueItem {
-        audio,
+    shared::track_queue_item(track).unwrap_or_else(|| QueueItem {
+        audio: AudioRef::Track { id: track.id.clone() },
         title: track.title.clone(),
         artist: track.artist.clone(),
         duration: Some(track.duration),
         video_id: track.you_tube_video_id.clone(),
-    }
+    })
 }
 
 pub fn entry_item(entry: &PlaylistEntry) -> QueueItem {
-    let audio = match (&entry.you_tube_video_id, entry.is_available_offline) {
-        (Some(video_id), false) => AudioRef::YouTube { video_id: video_id.clone() },
-        _ => AudioRef::Track { id: entry.track_id.clone() },
-    };
-    QueueItem {
-        audio,
+    shared::entry_queue_item(entry).unwrap_or_else(|| QueueItem {
+        audio: AudioRef::Track { id: entry.track_id.clone() },
         title: entry.title.clone(),
         artist: entry.artist.clone(),
         duration: Some(entry.duration),
         video_id: entry.you_tube_video_id.clone(),
-    }
+    })
 }
 
 /// A search result plays the library's local copy when there is one, else streams from YouTube.
