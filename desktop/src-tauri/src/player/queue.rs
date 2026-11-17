@@ -7,6 +7,8 @@
 //! before any song plays twice. When the cycle is used up, repeat-all reshuffles for the next one
 //! (never starting with the song that just ended). Songs added mid-cycle join the unheard part.
 
+use std::collections::HashSet;
+
 use shared::{QueueItem, RepeatMode};
 
 #[derive(Debug)]
@@ -18,6 +20,8 @@ pub struct Queue {
     cursor: Option<usize>,
     shuffle: bool,
     repeat: RepeatMode,
+    /// Goes up on every change of items or order.
+    revision: u64,
     rng: fastrand::Rng,
 }
 
@@ -29,7 +33,7 @@ impl Default for Queue {
 
 impl Queue {
     pub fn with_rng(rng: fastrand::Rng) -> Self {
-        Self { items: Vec::new(), order: Vec::new(), cursor: None, shuffle: false, repeat: RepeatMode::Off, rng }
+        Self { items: Vec::new(), order: Vec::new(), cursor: None, shuffle: false, repeat: RepeatMode::Off, revision: 0, rng }
     }
 
     pub fn items(&self) -> &[QueueItem] {
@@ -48,6 +52,11 @@ impl Queue {
 
     pub fn current(&self) -> Option<&QueueItem> {
         self.index().map(|i| &self.items[i])
+    }
+
+    /// Changes whenever the items or their order change. Moving the cursor does not count.
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     pub fn shuffle(&self) -> bool {
@@ -69,6 +78,7 @@ impl Queue {
             return;
         }
         self.shuffle = on;
+        self.revision += 1;
         let current = self.index();
         if on {
             self.order = self.bag(current);
@@ -82,6 +92,7 @@ impl Queue {
     /// Replaces the queue and starts at `start` (clamped to the list).
     pub fn replace(&mut self, items: Vec<QueueItem>, start: usize) {
         self.items = items;
+        self.revision += 1;
         if self.items.is_empty() {
             self.order.clear();
             self.cursor = None;
@@ -100,6 +111,7 @@ impl Queue {
     /// Adds items. Shuffled, they go to random places among the songs not heard yet this cycle.
     /// An idle queue starts at the first added item.
     pub fn enqueue(&mut self, items: Vec<QueueItem>) {
+        self.revision += 1;
         let first_new = self.items.len();
         let count = items.len();
         self.items.extend(items);
@@ -115,6 +127,18 @@ impl Queue {
         if self.cursor.is_none() && count > 0 {
             self.cursor = self.order.iter().position(|&i| i >= first_new);
         }
+    }
+
+    /// Like [`enqueue`](Self::enqueue), but skips items already in the queue and repeats within
+    /// `items`. Returns how many it added.
+    pub fn append_new(&mut self, items: Vec<QueueItem>) -> usize {
+        let mut seen: HashSet<shared::AudioRef> = self.items.iter().map(|i| i.audio.clone()).collect();
+        let fresh: Vec<QueueItem> = items.into_iter().filter(|i| seen.insert(i.audio.clone())).collect();
+        let added = fresh.len();
+        if added > 0 {
+            self.enqueue(fresh);
+        }
+        added
     }
 
     /// Moves on. `ended` says the current song finished on its own: with repeat-one, it plays
@@ -185,6 +209,7 @@ impl Queue {
             return false;
         }
         self.items.remove(index);
+        self.revision += 1;
         let from = self.order.iter().position(|&i| i == index).expect("every item is in the order");
         self.order.remove(from);
         for i in &mut self.order {
@@ -207,6 +232,7 @@ impl Queue {
     }
 
     pub fn clear(&mut self) {
+        self.revision += 1;
         self.items.clear();
         self.order.clear();
         self.cursor = None;
@@ -214,6 +240,7 @@ impl Queue {
 
     /// Starts the next cycle. Shuffled, a new bag that doesn't open with the song just played.
     fn new_cycle(&mut self) {
+        self.revision += 1;
         let last = self.index();
         if self.shuffle {
             let mut order: Vec<usize> = (0..self.items.len()).collect();
@@ -475,5 +502,64 @@ mod tests {
         order.sort_unstable();
         assert_eq!(order, [0, 1, 2, 3]);
         assert_eq!(queue.items().len(), 4);
+    }
+
+    // --- Appends and revision ---
+
+    #[test]
+    fn appended_duplicates_are_skipped() {
+        let mut queue = queue(1);
+        queue.replace(vec![item(0)], 0);
+        assert_eq!(queue.append_new(vec![item(0), item(1)]), 1);
+        assert_eq!(titles(&queue), ["Song 0", "Song 1"]);
+        assert_eq!(queue.append_new(vec![item(2), item(2)]), 1);
+        assert_eq!(titles(&queue), ["Song 0", "Song 1", "Song 2"]);
+    }
+
+    #[test]
+    fn revision_changes_on_every_change() {
+        let mut queue = queue(1);
+        let mut last = queue.revision();
+        let mut changed = |queue: &Queue| {
+            assert!(queue.revision() > last);
+            last = queue.revision();
+        };
+        queue.replace(items(3), 0);
+        changed(&queue);
+        queue.enqueue(vec![item(3)]);
+        changed(&queue);
+        queue.append_new(vec![item(4)]);
+        changed(&queue);
+        queue.remove(1);
+        changed(&queue);
+        queue.set_shuffle(true);
+        changed(&queue);
+        queue.set_repeat(RepeatMode::All);
+        queue.clear();
+        changed(&queue);
+
+        queue.set_repeat(RepeatMode::All);
+        queue.replace(items(2), 1);
+        let before = queue.revision();
+        queue.advance(true);
+        assert_eq!(queue.revision(), before, "moving the cursor is not a change");
+        queue.advance(true); // past the end: a new cycle
+        assert!(queue.revision() > before);
+    }
+
+    #[test]
+    fn shuffled_appends_join_the_unheard_part() {
+        for seed in 0..50 {
+            let mut queue = queue(seed);
+            queue.set_shuffle(true);
+            queue.replace(items(3), 0);
+            queue.append_new(vec![item(3), item(4)]);
+            let cursor = queue.order().iter().position(|&i| i == 0).unwrap();
+            assert_eq!(cursor, 0, "seed {seed}");
+            for new in [3, 4] {
+                let at = queue.order().iter().position(|&i| i == new).unwrap();
+                assert!(at > cursor, "seed {seed}: {:?}", queue.order());
+            }
+        }
     }
 }

@@ -5,6 +5,7 @@
 //! Loading a track (fetch + probe) runs on a short-lived loader thread so the engine stays
 //! responsive; a generation number discards loads that finish after the user moved on.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -31,7 +32,11 @@ pub type ServerUrl = Arc<RwLock<String>>;
 
 pub enum Command {
     /// `context`: the playlist name, when the queue is a playlist.
-    Play { items: Vec<QueueItem>, start: usize, context: Option<String> },
+    /// `session`: from [`PlayerHandle::new_session`]. A background loader appends to this queue
+    /// only while its session is the current one.
+    Play { items: Vec<QueueItem>, start: usize, context: Option<String>, session: u64 },
+    /// Adds items without starting playback. Ignored unless `session` is the current one.
+    Append { session: u64, items: Vec<QueueItem> },
     Enqueue(Vec<QueueItem>),
     Jump(usize),
     Remove(usize),
@@ -61,6 +66,20 @@ pub struct StartSettings {
 pub struct PlayerHandle {
     commands: Sender<Command>,
     state: Arc<Mutex<PlayerState>>,
+    /// Counts the sessions handed out.
+    sessions: Arc<AtomicU64>,
+    /// The session of the last `Play` the engine accepted.
+    session: Arc<AtomicU64>,
+}
+
+/// Takes a new session number from the counter.
+fn next_session(counter: &AtomicU64) -> u64 {
+    counter.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+/// An append belongs to the queue only when its session is the current one.
+fn accepts(current: u64, incoming: u64) -> bool {
+    current == incoming
 }
 
 impl PlayerHandle {
@@ -81,6 +100,8 @@ impl PlayerHandle {
         let mut queue = Queue::default();
         queue.set_shuffle(start.shuffle);
         queue.set_repeat(start.repeat);
+        let sessions = Arc::new(AtomicU64::new(0));
+        let session = Arc::new(AtomicU64::new(0));
         let engine = Engine {
             inbox,
             outbox: commands.clone(),
@@ -89,6 +110,8 @@ impl PlayerHandle {
             published: Arc::clone(&state),
             queue,
             generation: 0,
+            sessions: Arc::clone(&sessions),
+            session: Arc::clone(&session),
             loaded: false,
             want_playing: false,
             buffering: false,
@@ -102,12 +125,23 @@ impl PlayerHandle {
             .name("player".into())
             .spawn(move || engine.run(emit))
             .expect("spawn the player thread");
-        Self { commands, state }
+        Self { commands, state, sessions, session }
     }
 
     pub fn send(&self, command: Command) {
         // Only fails if the player thread is gone, which ends the app anyway.
         let _ = self.commands.send(command);
+    }
+
+    /// A new session number, to pass with `Play`. Each call returns a different one.
+    pub fn new_session(&self) -> u64 {
+        next_session(&self.sessions)
+    }
+
+    /// The session of the last `Play` accepted. It changes on `Stop` too, so a loader that
+    /// compares it with its own number stops after Stop.
+    pub fn session(&self) -> u64 {
+        self.session.load(Ordering::SeqCst)
     }
 
     pub fn state(&self) -> PlayerState {
@@ -123,6 +157,8 @@ struct Engine {
     published: Arc<Mutex<PlayerState>>,
     queue: Queue,
     generation: u64,
+    sessions: Arc<AtomicU64>,
+    session: Arc<AtomicU64>,
     loaded: bool,
     want_playing: bool,
     buffering: bool,
@@ -173,11 +209,17 @@ impl Engine {
 
     fn handle(&mut self, command: Command, output: &mut Output) {
         match command {
-            Command::Play { items, start, context } => {
+            Command::Play { items, start, context, session } => {
+                self.session.store(session, Ordering::SeqCst);
                 self.queue.replace(items, start);
                 self.context = context;
                 self.want_playing = true;
                 self.start(output);
+            }
+            Command::Append { session, items } => {
+                if accepts(self.session.load(Ordering::SeqCst), session) {
+                    self.queue.append_new(items);
+                }
             }
             Command::Enqueue(items) => {
                 let idle = self.queue.current().is_none();
@@ -225,6 +267,8 @@ impl Engine {
                 output.player.set_volume(self.volume as rodio::Float);
             }
             Command::Stop => {
+                let next = next_session(&self.sessions);
+                self.session.store(next, Ordering::SeqCst);
                 self.queue.clear();
                 self.context = None;
                 self.want_playing = false;
@@ -355,5 +399,27 @@ impl Engine {
             error: self.error.clone(),
             context: self.context.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_session_appends_are_ignored() {
+        // Play 1, then Play 2: an append for session 1 is stale.
+        assert!(accepts(2, 2));
+        assert!(!accepts(2, 1));
+        // After Stop the engine takes a new number, so no earlier session matches.
+        assert!(!accepts(3, 2));
+    }
+
+    #[test]
+    fn each_new_session_has_its_own_number() {
+        let counter = AtomicU64::new(0);
+        let a = next_session(&counter);
+        let b = next_session(&counter);
+        assert_ne!(a, b);
     }
 }

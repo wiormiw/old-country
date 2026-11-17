@@ -205,7 +205,8 @@ pub fn player_state(state: State<'_, AppState>) -> PlayerState {
 
 #[tauri::command]
 pub fn player_play(state: State<'_, AppState>, items: Vec<QueueItem>, start: usize, context: Option<String>) {
-    state.player.send(Command::Play { items, start, context });
+    let session = state.player.new_session();
+    state.player.send(Command::Play { items, start, context, session });
 }
 
 #[tauri::command]
