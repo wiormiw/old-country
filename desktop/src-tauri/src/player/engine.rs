@@ -437,6 +437,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_queue_sink_forwards_to_the_handle() {
+        use crate::player::library::QueueSink;
+
+        // A handle without a player thread (and without audio): the test reads its inbox.
+        let (commands, inbox) = mpsc::channel();
+        let handle = PlayerHandle {
+            commands,
+            state: Arc::default(),
+            queue: Arc::default(),
+            sessions: Arc::new(AtomicU64::new(4)),
+            session: Arc::new(AtomicU64::new(3)),
+        };
+
+        assert_eq!(QueueSink::new_session(&handle), 5);
+        assert_eq!(QueueSink::new_session(&handle), 6);
+        assert_eq!(QueueSink::session(&handle), 3);
+        QueueSink::send(&handle, Command::Append { session: 6, items: Vec::new() });
+        assert!(matches!(inbox.try_recv(), Ok(Command::Append { session: 6, .. })));
+    }
+
+    #[test]
     fn stale_session_appends_are_ignored() {
         // Play 1, then Play 2: an append for session 1 is stale.
         assert!(accepts(2, 2));

@@ -207,6 +207,13 @@ pub async fn play(items: Vec<QueueItem>, start: usize, context: Option<String>) 
     fire("player_play", args!(items: Vec<QueueItem> = items, start: usize = start, context: Option<String> = context)).await;
 }
 
+/// Plays the library (or the tracks that match `search`) from one track. The core loads the rest
+/// in the background. Fails when the library has no track that can play.
+#[expect(dead_code, reason = "the Library page calls it in the next task; remove this then")]
+pub async fn play_library(search: Option<String>) -> Result<(), AppError> {
+    call("player_play_library", args!(search: Option<String> = search)).await
+}
+
 pub async fn enqueue(items: Vec<QueueItem>) {
     fire("player_enqueue", args!(items: Vec<QueueItem> = items)).await;
 }

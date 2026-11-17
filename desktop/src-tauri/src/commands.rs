@@ -13,7 +13,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::api::ApiClient;
 use crate::presence::Presence;
 use crate::player::cache::AudioCache;
-use crate::player::{Command, PlayerHandle, ServerUrl};
+use crate::player::{Command, PlayerHandle, ServerUrl, library};
 use crate::settings;
 
 const MEGABYTE: u64 = 1024 * 1024;
@@ -213,6 +213,19 @@ pub fn player_queue(state: State<'_, AppState>) -> QueueView {
 pub fn player_play(state: State<'_, AppState>, items: Vec<QueueItem>, start: usize, context: Option<String>) {
     let session = state.player.new_session();
     state.player.send(Command::Play { items, start, context, session });
+}
+
+/// Plays the library (or the tracks that match `search`). It returns when the first track is
+/// sent; the rest loads in the background.
+#[tauri::command]
+pub async fn player_play_library(app: AppHandle, state: State<'_, AppState>, search: Option<String>) -> Reply<()> {
+    let shuffle = state.player.state().shuffle;
+    let rest = library::play_library(&state.api, &state.player, search, shuffle).await?;
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        rest.load(&state.api, &state.player).await;
+    });
+    Ok(())
 }
 
 #[tauri::command]

@@ -179,6 +179,7 @@ pub fn run() {
             commands::player_state,
             commands::player_queue,
             commands::player_play,
+            commands::player_play_library,
             commands::player_enqueue,
             commands::player_jump,
             commands::player_remove,
