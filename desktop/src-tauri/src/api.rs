@@ -7,7 +7,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::json;
 use shared::{
-    AppError, DownloadStatus, Downloads, ImportReport, Paged, Playlist, PlaylistDownloadReport, PlaylistSummary, ProblemDetails,
+    AppError, DownloadStatus, Downloads, ImportReport, PageItems, Paged, Playlist, PlaylistDownloadReport, PlaylistSummary, ProblemDetails,
     ScanStatus, Track,
     TrackDetail, YouTubeResult,
 };
@@ -42,6 +42,16 @@ impl ApiClient {
 
     pub async fn list_tracks(&self, page: u32, page_size: u32, search: Option<&str>) -> Result<Paged<Track>, AppError> {
         let mut query = vec![("page", page.to_string()), ("pageSize", page_size.to_string())];
+        if let Some(search) = search.map(str::trim).filter(|s| !s.is_empty()) {
+            query.push(("search", search.to_owned()));
+        }
+        self.get_query("/api/tracks", &query).await
+    }
+
+    /// One page of tracks without the count of all tracks. For a client that reads all pages and
+    /// already knows the total.
+    pub async fn list_track_items(&self, page: u32, page_size: u32, search: Option<&str>) -> Result<PageItems<Track>, AppError> {
+        let mut query = vec![("page", page.to_string()), ("pageSize", page_size.to_string()), ("includeTotal", "false".to_owned())];
         if let Some(search) = search.map(str::trim).filter(|s| !s.is_empty()) {
             query.push(("search", search.to_owned()));
         }

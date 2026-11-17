@@ -52,6 +52,13 @@ pub struct TrackDetail {
     pub playlists: Vec<PlaylistRef>,
 }
 
+/// The items of one page, without the totals. The server skips the count for a request with
+/// `includeTotal=false`; an older server sends the totals anyway, and they are ignored.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PageItems<T> {
+    pub items: Vec<T>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Paged<T> {

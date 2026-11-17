@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use shared::{AppError, Paged, QueueItem, Track, track_queue_item};
+use shared::{AppError, PageItems, QueueItem, Track, track_queue_item};
 
 use super::{Command, PlayerHandle};
 use crate::api::ApiClient;
@@ -122,11 +122,11 @@ impl Pages {
 
     /// The next page, or `None` after the last page. After a failed page, the next call reads
     /// the page after it.
-    async fn next(&mut self, api: &ApiClient, search: Option<&str>) -> Option<Result<Paged<Track>, AppError>> {
+    async fn next(&mut self, api: &ApiClient, search: Option<&str>) -> Option<Result<PageItems<Track>, AppError>> {
         if self.offset >= self.end {
             return None;
         }
-        let mut result = api.list_tracks(self.offset / self.size + 1, self.size, search).await;
+        let mut result = api.list_track_items(self.offset / self.size + 1, self.size, search).await;
         if let Err(error) = &result
             && self.size > OLD_SERVER_PAGE_SIZE
             && is_refused(error)
@@ -137,7 +137,7 @@ impl Pages {
             );
             self.size = OLD_SERVER_PAGE_SIZE;
             debug_assert_eq!(self.offset % self.size, 0, "the offset is not at the start of a page");
-            result = api.list_tracks(self.offset / self.size + 1, self.size, search).await;
+            result = api.list_track_items(self.offset / self.size + 1, self.size, search).await;
         }
         self.offset += self.size;
         Some(result)
@@ -238,6 +238,8 @@ mod tests {
         page: u32,
         page_size: u32,
         search: Option<String>,
+        /// False when the request asked the server to skip the count (`includeTotal=false`).
+        include_total: bool,
     }
 
     /// A server library: `GET /api/tracks?page=&pageSize=` pages through `tracks`.
@@ -256,7 +258,8 @@ mod tests {
             let query: HashMap<String, String> = request.url.query_pairs().into_owned().collect();
             let page: u32 = query["page"].parse().unwrap();
             let page_size: u32 = query["pageSize"].parse().unwrap();
-            self.requests.lock().unwrap().push(Asked { page, page_size, search: query.get("search").cloned() });
+            let include_total = query.get("includeTotal").is_none_or(|value| value != "false");
+            self.requests.lock().unwrap().push(Asked { page, page_size, search: query.get("search").cloned(), include_total });
             if let Some(max) = self.max_page_size
                 && page_size > max
             {
@@ -281,6 +284,12 @@ mod tests {
                 .take(page_size as usize)
                 .cloned()
                 .collect();
+            if !include_total {
+                // Like the server: no count, so no totals.
+                return ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "items": items, "page": page, "pageSize": page_size, "totalCount": null, "totalPages": null,
+                }));
+            }
             ResponseTemplate::new(200).set_body_json(Paged {
                 items,
                 page,
@@ -645,6 +654,30 @@ mod tests {
         let requests = stub.requests();
         assert!(requests.len() >= 5, "only {} requests", requests.len());
         assert!(requests.iter().all(|asked| asked.search.as_deref() == Some("band")), "{requests:?}");
+    }
+
+    #[tokio::test]
+    async fn only_the_count_request_asks_for_the_total() {
+        let stub = Stub::start(tracks(5, |_| true)).await;
+        let api = stub.api();
+        let player = Recorder::default();
+
+        play_all(&api, &player, None, false, 2).await;
+
+        let requests = stub.requests();
+        assert!(requests[0].include_total, "the count request must ask for the total: {requests:?}");
+        let pages: Vec<_> = requests.iter().filter(|asked| asked.page_size == 2).collect();
+        assert_eq!(pages.len(), 3, "{requests:?}");
+        assert!(pages.iter().all(|asked| !asked.include_total), "{requests:?}");
+        let appended: usize = player
+            .sent()
+            .iter()
+            .map(|sent| match sent {
+                Sent::Append { titles, .. } => titles.len(),
+                _ => 0,
+            })
+            .sum();
+        assert_eq!(appended, 5, "every track is appended from pages without totals");
     }
 
     #[tokio::test]
