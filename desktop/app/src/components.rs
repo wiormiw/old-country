@@ -1,5 +1,8 @@
 //! Pieces shared by every screen: navigation, the now-playing bar, notices, the playlist picker.
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use leptos::prelude::*;
 use leptos_router::components::A;
 use shared::{AppError, QueueView, RepeatMode, Theme};
@@ -343,26 +346,32 @@ fn QueueDrawer(closing: RwSignal<bool>, on_close: impl Fn() + 'static + Copy) ->
     let queue = RwSignal::new(None::<QueueView>);
     let revision = Memo::new(move |_| player.with(|s| s.queue_revision));
     let index = Memo::new(move |_| player.with(|s| s.index));
+    // A library load changes the queue many times in a short time. Each fetch copies the whole
+    // queue, thus only one fetch runs at a time. A change during a fetch sets `dirty`; when the
+    // fetch ends, one more fetch gets the newest queue.
+    let fetching = Rc::new(Cell::new(false));
+    let dirty = Rc::new(Cell::new(false));
     Effect::new(move |_| {
         revision.track();
+        if fetching.get() {
+            dirty.set(true);
+            return;
+        }
+        fetching.set(true);
+        let (fetching, dirty) = (Rc::clone(&fetching), Rc::clone(&dirty));
         leptos::task::spawn_local(async move {
-            let Ok(view) = ipc::player_queue().await else { return };
-            // The drawer can close before the reply comes. Then the signal is gone: do nothing.
-            // A slow reply must not replace a newer queue.
-            let Some((first, stale)) = queue.try_with_untracked(|q| (q.is_none(), q.as_ref().is_some_and(|q| q.revision > view.revision))) else {
-                return;
-            };
-            if stale || queue.try_set(Some(view)).is_some() {
-                return;
+            loop {
+                dirty.set(false);
+                if let Ok(view) = ipc::player_queue().await
+                    && !show_queue_view(queue, view)
+                {
+                    break;
+                }
+                if !dirty.get() {
+                    break;
+                }
             }
-            if first {
-                // Open at the song playing now, not at the top of a long queue.
-                request_animation_frame(|| {
-                    if let Ok(Some(current)) = document().query_selector(".queue li.current") {
-                        current.scroll_into_view_with_bool(false);
-                    }
-                });
-            }
+            fetching.set(false);
         });
     });
     view! {
@@ -411,6 +420,30 @@ fn QueueDrawer(closing: RwSignal<bool>, on_close: impl Fn() + 'static + Copy) ->
             }}
         </aside>
     }
+}
+
+/// Puts a fetched queue in the drawer. Returns false when the drawer is closed.
+fn show_queue_view(queue: RwSignal<Option<QueueView>>, view: QueueView) -> bool {
+    // The drawer can close before the reply comes. Then the signal is gone: do nothing.
+    // A slow reply must not replace a newer queue.
+    let Some((first, stale)) = queue.try_with_untracked(|q| (q.is_none(), q.as_ref().is_some_and(|q| q.revision > view.revision))) else {
+        return false;
+    };
+    if stale {
+        return true;
+    }
+    if queue.try_set(Some(view)).is_some() {
+        return false;
+    }
+    if first {
+        // Open at the song playing now, not at the top of a long queue.
+        request_animation_frame(|| {
+            if let Ok(Some(current)) = document().query_selector(".queue li.current") {
+                current.scroll_into_view_with_bool(false);
+            }
+        });
+    }
+    true
 }
 
 /// Which tracks the playlist picker is adding; `None` hides it.
