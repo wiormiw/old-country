@@ -26,6 +26,12 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    /// <summary>
+    /// A video that no other test downloads. The tests share one database, so a download of
+    /// <see cref="FakeYtDlp.Song"/> would make it offline for the import tests too.
+    /// </summary>
+    private const string OfflineVideo = "offlineSg01";
+
     [Fact]
     public async Task Importing_a_playlist_creates_youtube_only_tracks_and_a_library_playlist()
     {
@@ -200,7 +206,7 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
     {
         using var client = factory.CreateApiClient();
 
-        var queued = await client.PostAsJsonAsync("/api/youtube-music/downloads", new { videoIds = new[] { FakeYtDlp.Song.Id.Value } }, Ct);
+        var queued = await client.PostAsJsonAsync("/api/youtube-music/downloads", new { videoIds = new[] { OfflineVideo } }, Ct);
         queued.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         var job = (await queued.Content.ReadFromJsonAsync<List<DownloadStatus>>(Json, Ct)).ShouldNotBeNull().ShouldHaveSingleItem();
 
@@ -209,7 +215,7 @@ public sealed class YouTubeMusicEndpointTests(ApiFactory factory)
 
         var track = (await client.GetFromJsonAsync<TrackDetailResponse>($"/api/tracks/{done.TrackId}", Json, Ct)).ShouldNotBeNull().Track;
         track.IsAvailableOffline.ShouldBeTrue();
-        track.YouTubeVideoId.ShouldBe(FakeYtDlp.Song.Id.Value);
+        track.YouTubeVideoId.ShouldBe(OfflineVideo);
 
         var audio = await client.GetAsync($"/api/tracks/{done.TrackId}/audio", Ct);
         audio.StatusCode.ShouldBe(HttpStatusCode.OK);
