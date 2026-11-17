@@ -347,12 +347,14 @@ fn QueueDrawer(closing: RwSignal<bool>, on_close: impl Fn() + 'static + Copy) ->
         revision.track();
         leptos::task::spawn_local(async move {
             let Ok(view) = ipc::player_queue().await else { return };
+            // The drawer can close before the reply comes. Then the signal is gone: do nothing.
             // A slow reply must not replace a newer queue.
-            if queue.with_untracked(|q| q.as_ref().is_some_and(|q| q.revision > view.revision)) {
+            let Some((first, stale)) = queue.try_with_untracked(|q| (q.is_none(), q.as_ref().is_some_and(|q| q.revision > view.revision))) else {
+                return;
+            };
+            if stale || queue.try_set(Some(view)).is_some() {
                 return;
             }
-            let first = queue.with_untracked(Option::is_none);
-            queue.set(Some(view));
             if first {
                 // Open at the song playing now, not at the top of a long queue.
                 request_animation_frame(|| {
