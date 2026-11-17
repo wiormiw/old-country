@@ -11,8 +11,8 @@ use shared::{AppError, QueueItem, track_queue_item};
 use super::{Command, PlayerHandle};
 use crate::api::ApiClient;
 
-/// The tracks in one page request. The server accepts 200 at most (`ListTracksRequestValidator`).
-pub const LOAD_PAGE_SIZE: u32 = 200;
+/// The tracks in one page request. The server accepts 1000 at most (`ListTracksRequestValidator`).
+pub const LOAD_PAGE_SIZE: u32 = 1000;
 /// The loader adds no more tracks than this to the queue.
 pub const MAX_QUEUE: u32 = 20_000;
 /// With shuffle on, the random picks to try. After them the first playable track in page order is used.
