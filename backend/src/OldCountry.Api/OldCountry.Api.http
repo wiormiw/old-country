@@ -60,6 +60,9 @@ GET {{baseUrl}}/api/tracks/0193f4a2-0000-7000-8000-000000000000
 ### List the library, first page → 200
 GET {{baseUrl}}/api/tracks?page=1&pageSize=50
 
+### A later page without the count (totalCount and totalPages are null) → 200
+GET {{baseUrl}}/api/tracks?page=2&pageSize=1000&includeTotal=false
+
 ### Page size over 1000 → 400
 GET {{baseUrl}}/api/tracks?pageSize=1001
 

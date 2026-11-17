@@ -1,8 +1,11 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using OldCountry.Application.Common.Paging;
 using OldCountry.Application.Tracks;
 using OldCountry.Application.Tracks.GetTrack;
+using OldCountry.Infrastructure.Persistence;
 
 namespace OldCountry.Api.Tests.Integration;
 
@@ -109,7 +112,38 @@ public sealed class TracksEndpointTests(ApiFactory factory)
         page.ShouldNotBeNull();
         page.Items.Count.ShouldBe(2);
         page.PageSize.ShouldBe(2);
-        page.TotalCount.ShouldBeGreaterThanOrEqualTo(3);
+        page.TotalCount.ShouldNotBeNull().ShouldBeGreaterThanOrEqualTo(3);
+    }
+
+    [Fact]
+    public async Task Without_the_total_a_page_skips_the_count()
+    {
+        using var client = factory.CreateApiClient();
+        for (var i = 0; i < 3; i++)
+            (await client.PostAsJsonAsync("/api/tracks", LocalTrack($"Uncounted {i}", $"/srv/music/{Guid.NewGuid()}.flac"), Ct))
+                .StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var counted = await client.GetFromJsonAsync<PagedResponse<TrackResponse>>("/api/tracks?page=1&pageSize=2", Json, Ct);
+        var uncounted = await client.GetFromJsonAsync<PagedResponse<TrackResponse>>("/api/tracks?page=1&pageSize=2&includeTotal=false", Json, Ct);
+
+        uncounted.ShouldNotBeNull();
+        uncounted.TotalCount.ShouldBeNull();
+        uncounted.TotalPages.ShouldBeNull();
+        uncounted.Items.Select(t => t.Id).ShouldBe(counted.ShouldNotBeNull().Items.Select(t => t.Id));
+    }
+
+    [Fact]
+    public async Task Titles_and_artist_names_have_trigram_indexes_for_search()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var definitions = await db.Database
+            .SqlQuery<string>($"SELECT indexdef AS \"Value\" FROM pg_indexes WHERE indexname IN ('ix_tracks_title', 'ix_artists_name')")
+            .ToListAsync(Ct);
+
+        definitions.Count.ShouldBe(2);
+        definitions.ShouldAllBe(d => d.Contains("USING gin") && d.Contains("gin_trgm_ops"));
     }
 
     [Fact]

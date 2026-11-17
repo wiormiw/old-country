@@ -13,6 +13,8 @@ internal sealed class TrackConfiguration : IEntityTypeConfiguration<Track>
         builder.HasKey(track => track.Id);
         builder.Property(track => track.Id).ValueGeneratedNever();
         builder.Property(track => track.Title).HasMaxLength(Track.TitleMaxLength);
+        // A trigram index makes "contains" search (ILIKE '%text%') fast. It needs the pg_trgm extension.
+        builder.HasIndex(track => track.Title).HasMethod("gin").HasOperators("gin_trgm_ops");
         builder.Ignore(track => track.IsAvailableOffline);
 
         builder.HasOne<Artist>().WithMany().HasForeignKey(track => track.ArtistId).OnDelete(DeleteBehavior.Restrict);

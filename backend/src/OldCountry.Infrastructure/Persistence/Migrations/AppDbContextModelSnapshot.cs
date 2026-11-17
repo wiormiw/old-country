@@ -17,7 +17,7 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261112215643_PlaylistSyncTime";
+    public override string LastMigrationId => "20261117062708_TrackSearchTrigramIndexes";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -26,6 +26,7 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
             .HasAnnotation("ProductVersion", "11.0.0-rc.3.26522.148")
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+        NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
         modelBuilder.Entity("OldCountry.Domain.Artists.Artist", b =>
@@ -56,6 +57,12 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
 
                 b.HasKey("Id")
                     .HasName("pk_artists");
+
+                var index = b.HasIndex("Name")
+                    .HasDatabaseName("ix_artists_name");
+
+                NpgsqlIndexBuilderExtensions.HasMethod(index, "gin");
+                NpgsqlIndexBuilderExtensions.HasOperators(index, new[] { "gin_trgm_ops" });
 
                 b.HasIndex("NormalizedName")
                     .IsUnique()
@@ -283,6 +290,12 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
 
                 b.HasIndex("ArtistId")
                     .HasDatabaseName("ix_tracks_artist_id");
+
+                var index = b.HasIndex("Title")
+                    .HasDatabaseName("ix_tracks_title");
+
+                NpgsqlIndexBuilderExtensions.HasMethod(index, "gin");
+                NpgsqlIndexBuilderExtensions.HasOperators(index, new[] { "gin_trgm_ops" });
 
                 b.HasIndex("YouTubeVideoId")
                     .IsUnique()

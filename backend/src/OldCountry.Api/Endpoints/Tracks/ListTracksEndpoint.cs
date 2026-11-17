@@ -20,5 +20,5 @@ internal static class ListTracksEndpoint
         [AsParameters] ListTracksRequest request,
         IQueryHandler<ListTracksQuery, PagedResponse<TrackResponse>> handler,
         CancellationToken cancellationToken) =>
-        TypedResults.Ok(await handler.Handle(new ListTracksQuery(request.Page, request.PageSize, request.Search), cancellationToken));
+        TypedResults.Ok(await handler.Handle(new ListTracksQuery(request.Page, request.PageSize, request.Search, request.IncludeTotal), cancellationToken));
 }
