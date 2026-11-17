@@ -6,14 +6,18 @@
 
 use std::time::Instant;
 
-use shared::{AppError, QueueItem, track_queue_item};
+use shared::{AppError, Paged, QueueItem, Track, track_queue_item};
 
 use super::{Command, PlayerHandle};
 use crate::api::ApiClient;
 
 /// The tracks in one page request. The server accepts 1000 at most (`ListTracksRequestValidator`).
 pub const LOAD_PAGE_SIZE: u32 = 1000;
-/// The loader adds no more tracks than this to the queue.
+/// The largest page that an older server accepts. When the server refuses a larger page, the
+/// loader uses this size.
+pub const OLD_SERVER_PAGE_SIZE: u32 = 200;
+/// The loader reads no more tracks than this. It scans this many tracks; the queue gets only the
+/// playable ones, thus it can get fewer.
 pub const MAX_QUEUE: u32 = 20_000;
 /// With shuffle on, the random picks to try. After them the first playable track in page order is used.
 pub const RANDOM_TRIES: u32 = 5;
@@ -69,33 +73,88 @@ async fn start(
     // Take the number before the requests. A user action during them takes a larger number, so
     // the engine ignores this Play and the loader stops.
     let session = player.new_session();
-    let total = api.list_tracks(1, 1, search.as_deref()).await?.total_count;
+    let counted = api.list_tracks(1, 1, search.as_deref()).await?;
+    let total = counted.total_count;
     if total == 0 {
-        return Err(AppError::new("library.empty", "The library has no tracks to play."));
+        return Err(match search {
+            Some(_) => AppError::new("library.empty", "No tracks match the search."),
+            None => AppError::new("library.empty", "The library has no tracks to play."),
+        });
     }
-    let Some(first) = first_track(api, search.as_deref(), total, shuffle, page_size).await? else {
+    let mut pages = Pages::new(total, page_size);
+    let in_order = counted.items.first();
+    let Some(first) = first_track(api, search.as_deref(), total, shuffle, in_order, &mut pages).await? else {
         return Err(AppError::new(
             "library.unplayable",
             "No track in the library can play: none is downloaded or on YouTube.",
         ));
     };
     player.send(Command::Play { items: vec![first], start: 0, context: None, session });
-    Ok(Rest { search, total, page_size, session, started })
+    // When the scan changed to the smaller page size, the load uses it too.
+    Ok(Rest { search, total, page_size: pages.size, session, started })
 }
 
-/// The pages that the loader reads.
-fn page_count(total: u32, page_size: u32) -> u32 {
-    total.min(MAX_QUEUE).div_ceil(page_size)
+/// True when the server refused the request as not valid (400). An older server answers so to
+/// a page larger than [`OLD_SERVER_PAGE_SIZE`].
+fn is_refused(error: &AppError) -> bool {
+    error.status == Some(400)
+}
+
+/// Reads the pages that the loader reads, in order: the first [`MAX_QUEUE`] tracks.
+///
+/// When the server refuses a page larger than [`OLD_SERVER_PAGE_SIZE`], it asks again for the
+/// same tracks with that size, and keeps that size. The position counts tracks, not pages, thus
+/// no track is read two times and no track is skipped.
+struct Pages {
+    /// The number of tracks before the next page.
+    offset: u32,
+    end: u32,
+    size: u32,
+}
+
+// A change to the smaller size must keep the offset at the start of a page.
+const _: () = assert!(LOAD_PAGE_SIZE.is_multiple_of(OLD_SERVER_PAGE_SIZE));
+
+impl Pages {
+    fn new(total: u32, size: u32) -> Self {
+        Self { offset: 0, end: total.min(MAX_QUEUE), size }
+    }
+
+    /// The next page, or `None` after the last page. After a failed page, the next call reads
+    /// the page after it.
+    async fn next(&mut self, api: &ApiClient, search: Option<&str>) -> Option<Result<Paged<Track>, AppError>> {
+        if self.offset >= self.end {
+            return None;
+        }
+        let mut result = api.list_tracks(self.offset / self.size + 1, self.size, search).await;
+        if let Err(error) = &result
+            && self.size > OLD_SERVER_PAGE_SIZE
+            && is_refused(error)
+        {
+            log::warn!(
+                "library load: the server refused pages of {} tracks ({error}); it uses pages of {OLD_SERVER_PAGE_SIZE}",
+                self.size
+            );
+            self.size = OLD_SERVER_PAGE_SIZE;
+            debug_assert_eq!(self.offset % self.size, 0, "the offset is not at the start of a page");
+            result = api.list_tracks(self.offset / self.size + 1, self.size, search).await;
+        }
+        self.offset += self.size;
+        Some(result)
+    }
 }
 
 /// The track to start with. With shuffle on, a random track of the whole range. Else (or when
 /// no random pick can play), the first playable track in the pages that the loader reads.
+/// `in_order` is the first track in page order, from the count request. When it can play, no
+/// page is read.
 async fn first_track(
     api: &ApiClient,
     search: Option<&str>,
     total: u32,
     shuffle: bool,
-    page_size: u32,
+    in_order: Option<&Track>,
+    pages: &mut Pages,
 ) -> Result<Option<QueueItem>, AppError> {
     if shuffle {
         for _ in 0..RANDOM_TRIES {
@@ -106,9 +165,11 @@ async fn first_track(
             }
         }
     }
-    for page in 1..=page_count(total, page_size) {
-        let found = api.list_tracks(page, page_size, search).await?;
-        if let Some(item) = found.items.iter().find_map(track_queue_item) {
+    if let Some(item) = in_order.and_then(track_queue_item) {
+        return Ok(Some(item));
+    }
+    while let Some(found) = pages.next(api, search).await {
+        if let Some(item) = found?.items.iter().find_map(track_queue_item) {
             return Ok(Some(item));
         }
     }
@@ -120,7 +181,10 @@ impl Rest {
     /// `Stop` takes a larger session. The first track is appended again; the queue skips it.
     pub async fn load(self, api: &ApiClient, player: &impl QueueSink) {
         let mut appended = 0;
-        for page in 1..=page_count(self.total, self.page_size) {
+        let mut read = 0;
+        let mut failed = 0;
+        let mut pages = Pages::new(self.total, self.page_size);
+        loop {
             // The engine sets its session when it processes the Play. Until then it shows an
             // older, smaller number. All numbers come from one rising counter, thus only a
             // larger number means that a newer Play or a Stop replaced this queue.
@@ -128,7 +192,10 @@ impl Rest {
                 log::info!("library load stopped after {appended} tracks: a newer queue replaced it");
                 return;
             }
-            match api.list_tracks(page, self.page_size, self.search.as_deref()).await {
+            let from = pages.offset + 1;
+            let Some(result) = pages.next(api, self.search.as_deref()).await else { break };
+            read += 1;
+            match result {
                 Ok(found) => {
                     let items: Vec<QueueItem> = found.items.iter().filter_map(track_queue_item).collect();
                     appended += items.len();
@@ -136,8 +203,14 @@ impl Rest {
                         player.send(Command::Append { session: self.session, items });
                     }
                 }
-                Err(error) => log::warn!("library load: page {page} failed and is skipped: {error}"),
+                Err(error) => {
+                    failed += 1;
+                    log::warn!("library load: the page from track {from} failed and is skipped: {error}");
+                }
             }
+        }
+        if read > 0 && failed == read {
+            log::error!("library load: all {read} pages failed; the queue has only the first track");
         }
         log::info!(
             "library load: {appended} playable tracks of {} in {:.2?}",
@@ -170,10 +243,12 @@ mod tests {
     /// A server library: `GET /api/tracks?page=&pageSize=` pages through `tracks`.
     /// It records each request. With `user_plays`, the user starts a queue while the request runs:
     /// it takes a session number from the counter and the engine makes it the current one.
+    /// With `max_page_size`, it refuses larger pages like an older server: 400 `validation`.
     struct Library {
         tracks: Vec<Track>,
         requests: Arc<Mutex<Vec<Asked>>>,
         user_plays: Option<Arc<Recorder>>,
+        max_page_size: Option<u32>,
     }
 
     impl Respond for Library {
@@ -182,6 +257,16 @@ mod tests {
             let page: u32 = query["page"].parse().unwrap();
             let page_size: u32 = query["pageSize"].parse().unwrap();
             self.requests.lock().unwrap().push(Asked { page, page_size, search: query.get("search").cloned() });
+            if let Some(max) = self.max_page_size
+                && page_size > max
+            {
+                return ResponseTemplate::new(400).set_body_raw(
+                    format!(
+                        r#"{{"title":"One or more validation errors occurred.","status":400,"code":"validation","errors":{{"PageSize":["Ask for between 1 and {max} tracks per page."]}}}}"#
+                    ),
+                    "application/problem+json",
+                );
+            }
             if let Some(player) = &self.user_plays
                 && player.session() == 0
             {
@@ -232,15 +317,24 @@ mod tests {
 
     impl Stub {
         async fn start(tracks: Vec<Track>) -> Self {
-            Self::with_user(tracks, None).await
+            Self::serve(tracks, None, None).await
         }
 
         async fn with_user(tracks: Vec<Track>, user_plays: Option<Arc<Recorder>>) -> Self {
+            Self::serve(tracks, user_plays, None).await
+        }
+
+        /// A server that accepts 200 tracks per page at most.
+        async fn old_server(tracks: Vec<Track>) -> Self {
+            Self::serve(tracks, None, Some(OLD_SERVER_PAGE_SIZE)).await
+        }
+
+        async fn serve(tracks: Vec<Track>, user_plays: Option<Arc<Recorder>>, max_page_size: Option<u32>) -> Self {
             let server = MockServer::start().await;
             let requests = Arc::new(Mutex::new(Vec::new()));
             Mock::given(method("GET"))
                 .and(path("/api/tracks"))
-                .respond_with(Library { tracks, requests: Arc::clone(&requests), user_plays })
+                .respond_with(Library { tracks, requests: Arc::clone(&requests), user_plays, max_page_size })
                 .mount(&server)
                 .await;
             Self { server, requests }
@@ -352,6 +446,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shuffle_off_uses_the_track_of_the_count_request() {
+        let stub = Stub::start(tracks(5, |_| true)).await;
+        let api = stub.api();
+        let player = Recorder::default();
+
+        start(&api, &player, None, false, 2).await.unwrap();
+
+        assert_eq!(player.first_play(), strings(&["t1"]));
+        let requests = stub.requests();
+        assert_eq!(requests.len(), 1, "a page was read for the first track: {requests:?}");
+    }
+
+    /// All the titles that the loader appended, in order.
+    fn appended(sent: &[Sent]) -> Vec<String> {
+        sent.iter()
+            .flat_map(|sent| match sent {
+                Sent::Append { titles, .. } => titles.clone(),
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn an_old_server_gets_pages_of_200_and_the_load_appends_every_track() {
+        // Track 1 cannot play, thus with shuffle off the start reads pages.
+        let library = tracks(1050, |n| n != 1);
+        let playable: Vec<String> = library.iter().skip(1).map(|t| t.title.clone()).collect();
+        let stub = Stub::old_server(library).await;
+        let api = stub.api();
+        for shuffle in [false, true] {
+            let player = Recorder::default();
+
+            play_all(&api, &player, None, shuffle, LOAD_PAGE_SIZE).await;
+
+            let sent = player.sent();
+            match sent.first() {
+                Some(Sent::Play { titles, .. }) => {
+                    assert_eq!(titles.len(), 1);
+                    if !shuffle {
+                        assert_eq!(titles, &strings(&["t2"]));
+                    }
+                }
+                other => panic!("the first command is not Play: {other:?}"),
+            }
+            assert_eq!(appended(&sent), playable, "shuffle {shuffle}: a track is missing or repeated");
+            // One refused request of 1000 at most, then only pages of 200.
+            let requests = stub.requests();
+            let large = requests.iter().filter(|asked| asked.page_size > OLD_SERVER_PAGE_SIZE).count();
+            assert_eq!(large, 1, "shuffle {shuffle}: {requests:?}");
+        }
+    }
+
+    #[tokio::test]
     async fn random_first_track_comes_from_the_whole_range() {
         let stub = Stub::start(tracks(1000, |_| true)).await;
         let api = stub.api();
@@ -424,6 +571,17 @@ mod tests {
 
         assert_eq!(error.code, "library.empty");
         assert_eq!(player.sent(), vec![]);
+    }
+
+    #[tokio::test]
+    async fn search_without_matches_reports_an_error() {
+        let stub = Stub::start(Vec::new()).await;
+        let player = Recorder::default();
+
+        let error = start(&stub.api(), &player, Some("nothing".into()), false, 2).await.err().unwrap();
+
+        assert_eq!(error.code, "library.empty");
+        assert_eq!(error.message, "No tracks match the search.");
     }
 
     #[tokio::test]
