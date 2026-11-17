@@ -66,6 +66,9 @@ async fn start(
     page_size: u32,
 ) -> Result<Rest, AppError> {
     let started = Instant::now();
+    // Take the number before the requests. A user action during them takes a larger number, so
+    // the engine ignores this Play and the loader stops.
+    let session = player.new_session();
     let total = api.list_tracks(1, 1, search.as_deref()).await?.total_count;
     if total == 0 {
         return Err(AppError::new("library.empty", "The library has no tracks to play."));
@@ -76,7 +79,6 @@ async fn start(
             "No track in the library can play: none is downloaded or on YouTube.",
         ));
     };
-    let session = player.new_session();
     player.send(Command::Play { items: vec![first], start: 0, context: None, session });
     Ok(Rest { search, total, page_size, session, started })
 }
@@ -166,10 +168,12 @@ mod tests {
     }
 
     /// A server library: `GET /api/tracks?page=&pageSize=` pages through `tracks`.
-    /// It records each request.
+    /// It records each request. With `user_plays`, the user starts a queue while the request runs:
+    /// it takes a session number from the counter and the engine makes it the current one.
     struct Library {
         tracks: Vec<Track>,
         requests: Arc<Mutex<Vec<Asked>>>,
+        user_plays: Option<Arc<Recorder>>,
     }
 
     impl Respond for Library {
@@ -178,6 +182,12 @@ mod tests {
             let page: u32 = query["page"].parse().unwrap();
             let page_size: u32 = query["pageSize"].parse().unwrap();
             self.requests.lock().unwrap().push(Asked { page, page_size, search: query.get("search").cloned() });
+            if let Some(player) = &self.user_plays
+                && player.session() == 0
+            {
+                let session = player.new_session();
+                player.send(Command::Play { items: Vec::new(), start: 0, context: None, session });
+            }
             let total = self.tracks.len() as u32;
             let items = self
                 .tracks
@@ -222,11 +232,15 @@ mod tests {
 
     impl Stub {
         async fn start(tracks: Vec<Track>) -> Self {
+            Self::with_user(tracks, None).await
+        }
+
+        async fn with_user(tracks: Vec<Track>, user_plays: Option<Arc<Recorder>>) -> Self {
             let server = MockServer::start().await;
             let requests = Arc::new(Mutex::new(Vec::new()));
             Mock::given(method("GET"))
                 .and(path("/api/tracks"))
-                .respond_with(Library { tracks, requests: Arc::clone(&requests) })
+                .respond_with(Library { tracks, requests: Arc::clone(&requests), user_plays })
                 .mount(&server)
                 .await;
             Self { server, requests }
@@ -253,8 +267,9 @@ mod tests {
         items.iter().map(|item| item.title.clone()).collect()
     }
 
-    /// Records the commands. Like the engine, it takes the session of a `Play` as current,
-    /// unless `play_is_slow` is set (the engine did not process the `Play` yet).
+    /// Records the commands. Like the engine, it takes the session of a `Play` as current when it
+    /// is not older than the current one, unless `play_is_slow` is set (the engine did not process
+    /// the `Play` yet).
     #[derive(Default)]
     struct Recorder {
         counter: AtomicU64,
@@ -277,7 +292,7 @@ mod tests {
         fn send(&self, command: Command) {
             let sent = match command {
                 Command::Play { items, session, .. } => {
-                    if !self.play_is_slow {
+                    if !self.play_is_slow && session >= self.session() {
                         self.current.store(session, Ordering::SeqCst);
                     }
                     Sent::Play { titles: titles(&items), session }
@@ -426,6 +441,26 @@ mod tests {
                 Sent::Append { titles: strings(&["t1", "t2"]), session: 1 },
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn a_user_play_during_the_start_wins() {
+        let player = Arc::new(Recorder::default());
+        let stub = Stub::with_user(tracks(5, |_| true), Some(Arc::clone(&player))).await;
+        let api = stub.api();
+
+        play_all(&api, &player, None, false, 2).await;
+
+        // The loader took session 1 first; the user's Play took 2 during the count request.
+        // The engine ignores the late Play 1, and the loader appends nothing.
+        assert_eq!(
+            player.sent(),
+            vec![
+                Sent::Play { titles: vec![], session: 2 },
+                Sent::Play { titles: strings(&["t1"]), session: 1 },
+            ]
+        );
+        assert_eq!(player.session(), 2);
     }
 
     #[tokio::test]

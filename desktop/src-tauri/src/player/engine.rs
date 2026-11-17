@@ -85,6 +85,13 @@ fn accepts(current: u64, incoming: u64) -> bool {
     current == incoming
 }
 
+/// A `Play` replaces the queue only when its session is not older than the current one. A slow
+/// sender (the library loader) takes its number first. A user action that comes later takes a
+/// larger number, and the late `Play` must not replace it.
+fn accepts_play(current: u64, incoming: u64) -> bool {
+    incoming >= current
+}
+
 impl PlayerHandle {
     pub fn spawn(
         cache: Arc<AudioCache>,
@@ -239,6 +246,11 @@ impl Engine {
     fn handle(&mut self, command: Command, output: &mut Output) {
         match command {
             Command::Play { items, start, context, session } => {
+                let current = self.session.load(Ordering::SeqCst);
+                if !accepts_play(current, session) {
+                    log::debug!("ignored a Play of session {session}: session {current} is newer");
+                    return;
+                }
                 self.session.store(session, Ordering::SeqCst);
                 self.queue.replace(items, start);
                 self.context = context;
@@ -455,6 +467,17 @@ mod tests {
         assert_eq!(QueueSink::session(&handle), 3);
         QueueSink::send(&handle, Command::Append { session: 6, items: Vec::new() });
         assert!(matches!(inbox.try_recv(), Ok(Command::Append { session: 6, .. })));
+    }
+
+    #[test]
+    fn an_older_play_does_not_replace_a_newer_queue() {
+        // The loader took session 2, then the user played session 3: the late Play 2 is ignored.
+        assert!(!accepts_play(3, 2));
+        assert!(accepts_play(3, 3));
+        assert!(accepts_play(3, 4));
+        // Stop took 3 after Play 2: a Play 2 that arrives after Stop is ignored too.
+        assert!(!accepts_play(3, 2));
+        assert!(accepts_play(0, 1));
     }
 
     #[test]
