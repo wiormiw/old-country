@@ -6,7 +6,7 @@ use shared::{ScanStatus, Track};
 
 use crate::components::{Art, ErrorView, Loading, open_picker};
 use crate::ipc;
-use crate::state::{on_change, track_item, use_notice};
+use crate::state::{StartTarget, offer_space_start, on_change, track_item, use_notice};
 
 const PAGE_SIZE: u32 = 50;
 
@@ -37,6 +37,8 @@ pub fn Library() -> impl IntoView {
         ipc::list_tracks(page.get(), PAGE_SIZE, (!text.trim().is_empty()).then_some(text))
     });
     on_change(LibraryChanges::touches_tracks, move || tracks.refetch());
+    // Space with nothing playing starts the library, or the tracks that the search shows.
+    offer_space_start(move || Some(StartTarget::Library { search: Some(search.get()).filter(|s| !s.trim().is_empty()) }));
 
     view! {
         <section class="page">

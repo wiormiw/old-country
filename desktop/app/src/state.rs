@@ -123,6 +123,7 @@ pub fn provide_app_state() {
     let player = RwSignal::new(PlayerState::default());
     provide_context(Player(player));
     provide_context(Notice(RwSignal::new(None)));
+    provide_context(SpaceStart(RwSignal::new(None)));
     let requests = RwSignal::new(0);
     ipc::track_requests(requests);
     provide_context(Requests(requests));
@@ -142,6 +143,32 @@ pub fn provide_app_state() {
             player.set(state);
         }
     });
+}
+
+/// A list that Space can start when no song is current. The Library page and a playlist page
+/// offer one.
+#[derive(Clone, Debug)]
+pub enum StartTarget {
+    /// The library, or the tracks that match `search`.
+    Library { search: Option<String> },
+    /// A playlist: its name and its songs that can play.
+    Playlist { name: String, items: Vec<QueueItem> },
+}
+
+/// The list that the page on screen offers to Space. `None` when the page has no list.
+#[derive(Clone, Copy)]
+pub struct SpaceStart(pub RwSignal<Option<StartTarget>>);
+
+pub fn use_space_start() -> SpaceStart {
+    expect_context::<SpaceStart>()
+}
+
+/// Offers the list of the page to Space, for as long as the page is on screen. `target` runs
+/// again when the signals that it reads change.
+pub fn offer_space_start(target: impl Fn() -> Option<StartTarget> + 'static) {
+    let space_start = use_space_start().0;
+    Effect::new(move |_| space_start.set(target()));
+    on_cleanup(move || space_start.set(None));
 }
 
 pub fn use_player() -> Player {

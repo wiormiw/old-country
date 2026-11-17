@@ -9,7 +9,7 @@ use shared::{AppError, Playlist, PlaylistDownloadReport, PlaylistEntry};
 
 use crate::components::{Art, ErrorView, Loading};
 use crate::ipc;
-use crate::state::{on_change, entry_item, import_message, is_lasting_problem, problem_label, time_ago, use_notice};
+use crate::state::{StartTarget, offer_space_start, on_change, entry_item, import_message, is_lasting_problem, problem_label, time_ago, use_notice};
 
 #[component]
 pub fn Playlists() -> impl IntoView {
@@ -284,6 +284,12 @@ fn PlaylistView(playlist: Playlist, reload: impl Fn() + Copy + Send + Sync + 'st
     let queue = move || entries.with_untracked(|list| list.iter().map(entry_item).collect::<Vec<_>>());
     // The player gets the playlist name with the queue. Discord shows it.
     let context = StoredValue::new(playlist.name.clone());
+    // Space with nothing playing starts the playlist. Only the songs that can play go in the
+    // queue. With no such song, Space plays or pauses as before.
+    offer_space_start(move || {
+        let items = entries.with(|list| list.iter().filter_map(shared::entry_queue_item).collect::<Vec<_>>());
+        (!items.is_empty()).then(|| StartTarget::Playlist { name: context.get_value(), items })
+    });
 
     view! {
         <header class="page-head">

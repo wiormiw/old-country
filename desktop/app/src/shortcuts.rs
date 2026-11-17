@@ -2,7 +2,7 @@
 //!
 //! | Keys            | Action                         |
 //! |-----------------|--------------------------------|
-//! | Space           | Play or pause                  |
+//! | Space           | Play or pause; on a list page with nothing playing, start the list |
 //! | Ctrl+→ / Ctrl+← | Next / previous track          |
 //! | Ctrl+↑ / Ctrl+↓ | Volume up / down (10 %)        |
 //! | Ctrl+S          | Shuffle on or off              |
@@ -15,6 +15,9 @@
 //! Without these, Space only did the default of the browser engine: it clicked the button with the
 //! focus. WebKitGTK keeps the focus on a button after a click, so after "Play all" a later Space
 //! started the playlist again from the first track.
+//!
+//! The Library page and a playlist page offer their list with `offer_space_start`. Space starts it
+//! only when no song is current. It starts at a random song when shuffle is on, else at song 1.
 
 use leptos::ev;
 use leptos::prelude::*;
@@ -22,7 +25,7 @@ use leptos::wasm_bindgen::JsCast;
 use leptos_router::hooks::use_navigate;
 
 use crate::ipc;
-use crate::state::use_player;
+use crate::state::{Notice, StartTarget, use_notice, use_player, use_space_start};
 
 /// The change of volume for each key press.
 const VOLUME_STEP: f32 = 0.1;
@@ -81,6 +84,47 @@ pub fn shortcut_for(key: &str, modifiers: Modifiers, focus: Focus) -> Option<Sho
     }
 }
 
+/// What Space does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpaceAction {
+    /// Play or pause the current song.
+    Toggle,
+    /// Start the list of the page.
+    StartList,
+}
+
+/// Space starts the list of the page only when no song is current and the page offers a list.
+/// Else it plays or pauses, as before.
+pub fn space_action(has_current: bool, has_target: bool) -> SpaceAction {
+    if !has_current && has_target { SpaceAction::StartList } else { SpaceAction::Toggle }
+}
+
+/// The index of the first song when Space starts a list of `len` songs. A random index when
+/// shuffle is on, else 0. `random` is from `0.0..1.0`.
+pub fn random_start(len: usize, shuffle: bool, random: f64) -> usize {
+    if !shuffle || len == 0 {
+        return 0;
+    }
+    ((random * len as f64) as usize).min(len - 1)
+}
+
+/// Starts the list that the page offers. Shows an error when the library has no song to play.
+fn start_list(target: StartTarget, shuffle: bool, notice: Notice) {
+    match target {
+        StartTarget::Library { search } => {
+            leptos::task::spawn_local(async move {
+                if let Err(error) = ipc::play_library(search).await {
+                    notice.error(error.message);
+                }
+            });
+        }
+        StartTarget::Playlist { name, items } => {
+            let start = random_start(items.len(), shuffle, js_sys::Math::random());
+            leptos::task::spawn_local(ipc::play(items, start, Some(name)));
+        }
+    }
+}
+
 /// The new volume after a key press, from 0.0 to 1.0.
 pub fn stepped_volume(volume: f32, up: bool) -> f32 {
     let next = if up { volume + VOLUME_STEP } else { volume - VOLUME_STEP };
@@ -93,6 +137,8 @@ pub fn stepped_volume(volume: f32, up: bool) -> f32 {
 #[component]
 pub fn Shortcuts() -> impl IntoView {
     let player = use_player().0;
+    let space_start = use_space_start().0;
+    let notice = use_notice();
     let navigate = use_navigate();
     let read = |event: &web_sys::KeyboardEvent| {
         let modifiers = Modifiers {
@@ -111,7 +157,14 @@ pub fn Shortcuts() -> impl IntoView {
             return;
         }
         match shortcut {
-            Shortcut::PlayPause => leptos::task::spawn_local(ipc::toggle()),
+            Shortcut::PlayPause => {
+                let has_current = player.with_untracked(|s| s.current().is_some());
+                let target = space_start.get_untracked();
+                match (space_action(has_current, target.is_some()), target) {
+                    (SpaceAction::StartList, Some(target)) => start_list(target, player.with_untracked(|s| s.shuffle), notice),
+                    _ => leptos::task::spawn_local(ipc::toggle()),
+                }
+            }
             Shortcut::Next => leptos::task::spawn_local(ipc::next()),
             Shortcut::Previous => leptos::task::spawn_local(ipc::prev()),
             Shortcut::VolumeUp | Shortcut::VolumeDown => {
@@ -183,7 +236,7 @@ fn focus_of(event: &web_sys::KeyboardEvent) -> Focus {
 
 #[cfg(test)]
 mod tests {
-    use super::{Focus, Modifiers, Shortcut, shortcut_for, stepped_volume};
+    use super::{Focus, Modifiers, Shortcut, SpaceAction, random_start, shortcut_for, space_action, stepped_volume};
 
     const NONE: Modifiers = Modifiers { primary: false, shift: false, alt: false };
     const CTRL: Modifiers = Modifiers { primary: true, shift: false, alt: false };
@@ -232,5 +285,27 @@ mod tests {
         assert!((stepped_volume(0.95, true) - 1.0).abs() < 1e-6);
         assert_eq!(stepped_volume(0.05, false), 0.0);
         assert_eq!(stepped_volume(1.0, true), 1.0);
+    }
+
+    #[test]
+    fn space_starts_the_page_list_when_nothing_is_current() {
+        assert_eq!(space_action(false, true), SpaceAction::StartList);
+    }
+
+    #[test]
+    fn space_toggles_when_a_song_is_loaded() {
+        assert_eq!(space_action(true, true), SpaceAction::Toggle);
+    }
+
+    #[test]
+    fn space_toggles_without_a_list() {
+        assert_eq!(space_action(false, false), SpaceAction::Toggle);
+    }
+
+    #[test]
+    fn random_start_stays_in_range() {
+        assert_eq!(random_start(10, true, 0.999), 9);
+        assert_eq!(random_start(10, false, 0.5), 0);
+        assert_eq!(random_start(0, true, 0.5), 0);
     }
 }

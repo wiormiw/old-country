@@ -251,6 +251,8 @@ desktop/
   Ctrl+→/← next/previous, Ctrl+↑/↓ volume, Ctrl+S shuffle, Ctrl+R repeat, Ctrl+L search (the
   page's search box, or YouTube search). Cmd works in place of Ctrl on macOS. None of them work
   while you type in a text field.
+  Space on a list page with nothing playing starts it: the Library page starts the library (or
+  what the search shows), a playlist page starts the playlist, with the shuffle and repeat settings.
 - **Discord Rich Presence** (`src-tauri/src/presence.rs`): while music plays, your Discord profile
   shows "Listening to old-country" like Spotify does: the track (linked to YouTube Music for
   YouTube tracks), the artist, a progress bar, "Playlist: <name>" (or "Library"), and a
