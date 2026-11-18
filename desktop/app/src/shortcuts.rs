@@ -196,9 +196,20 @@ pub fn Shortcuts() -> impl IntoView {
             event.prevent_default();
         }
     });
+    // Alt+Tab away: drop the focus of a clicked button or slider. Else WebKit shows a focus ring on it
+    // when the window comes back by keyboard. A text field keeps the focus, to go on typing.
+    let window_left = window_event_listener(ev::blur, |_| {
+        let Some(element) = document().active_element() else { return };
+        if !keeps_focus_when_the_window_is_left(focus_of_element(&element))
+            && let Ok(element) = element.dyn_into::<web_sys::HtmlElement>()
+        {
+            let _ = element.blur();
+        }
+    });
     on_cleanup(move || {
         keydown.remove();
         keyup.remove();
+        window_left.remove();
     });
 }
 
@@ -215,10 +226,19 @@ fn focus_search_box() -> bool {
     }
 }
 
+/// True when an element with this focus keeps it while the window is in the background.
+pub fn keeps_focus_when_the_window_is_left(focus: Focus) -> bool {
+    focus == Focus::TextField
+}
+
 fn focus_of(event: &web_sys::KeyboardEvent) -> Focus {
-    let Some(element) = event.target().and_then(|target| target.dyn_into::<web_sys::Element>().ok()) else {
-        return Focus::Other;
-    };
+    match event.target().and_then(|target| target.dyn_into::<web_sys::Element>().ok()) {
+        Some(element) => focus_of_element(&element),
+        None => Focus::Other,
+    }
+}
+
+fn focus_of_element(element: &web_sys::Element) -> Focus {
     if element.get_attribute("contenteditable").is_some_and(|value| value != "false") {
         return Focus::TextField;
     }
@@ -236,10 +256,20 @@ fn focus_of(event: &web_sys::KeyboardEvent) -> Focus {
 
 #[cfg(test)]
 mod tests {
-    use super::{Focus, Modifiers, Shortcut, SpaceAction, random_start, shortcut_for, space_action, stepped_volume};
+    use super::{Focus, Modifiers, Shortcut, SpaceAction, keeps_focus_when_the_window_is_left, random_start, shortcut_for, space_action, stepped_volume};
 
     const NONE: Modifiers = Modifiers { primary: false, shift: false, alt: false };
     const CTRL: Modifiers = Modifiers { primary: true, shift: false, alt: false };
+
+    #[test]
+    fn only_a_text_field_keeps_the_focus_when_the_window_is_left() {
+        // After Alt+Tab back, a clicked button must not show a focus ring.
+        assert!(keeps_focus_when_the_window_is_left(Focus::TextField));
+        assert!(!keeps_focus_when_the_window_is_left(Focus::Button));
+        assert!(!keeps_focus_when_the_window_is_left(Focus::Slider));
+        assert!(!keeps_focus_when_the_window_is_left(Focus::Other));
+    }
+
 
     #[test]
     fn space_plays_or_pauses_wherever_the_focus_is() {
